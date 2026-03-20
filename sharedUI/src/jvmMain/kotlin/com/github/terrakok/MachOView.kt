@@ -6,10 +6,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -18,7 +20,7 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun MachOView(machOFile: MachOFile) {
-    var selectedItem by remember { mutableStateOf<Any?>(null) }
+    var selectedItem by remember { mutableStateOf<Any>(machOFile.header) }
 
     Row(modifier = Modifier.fillMaxSize()) {
         // Sidebar
@@ -56,7 +58,7 @@ fun Tree(
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            val rootName = "Executable (${machOFile.header?.cputype ?: "unknown"})"
+            val rootName = "Executable (${machOFile.header.cputype})"
             TreeItem(
                 text = rootName,
                 isSelected = false,
@@ -64,14 +66,12 @@ fun Tree(
             )
         }
         item {
-            machOFile.header?.let { header ->
-                TreeItem(
-                    text = "Mach Header",
-                    isSelected = selectedItem == header,
-                    indent = 16.dp,
-                    onClick = { onItemSelected(header) }
-                )
-            }
+            TreeItem(
+                text = "Mach Header",
+                isSelected = selectedItem == machOFile.header,
+                indent = 16.dp,
+                onClick = { onItemSelected(machOFile.header) }
+            )
         }
         item {
             TreeItem(
@@ -129,7 +129,8 @@ fun TreeItem(
     onClick: () -> Unit
 ) {
     val backgroundColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
-    val textColor = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
+    val textColor =
+        if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
 
     Row(
         modifier = Modifier
@@ -140,14 +141,14 @@ fun TreeItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isExpandable) {
-            Text(
-                text = if (isExpanded) "▼" else "▶",
-                color = textColor,
-                fontSize = 10.sp,
+            Icon(
+                imageVector = if (isExpanded) AppIcons.RadixTriangleDown else AppIcons.RadixTriangleRight,
+                contentDescription = "Expand/collapse",
+                tint = textColor,
                 modifier = Modifier
                     .size(20.dp)
-                    .clickable { onExpandClick() },
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    .clip(RoundedCornerShape(50))
+                    .clickable { onExpandClick() }
             )
         } else {
             Spacer(modifier = Modifier.size(20.dp))
@@ -181,7 +182,8 @@ fun TableContent(selectedItem: Any?) {
     val data = getTableData(selectedItem)
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         itemsIndexed(data) { index, row ->
-            val backgroundColor = if (index % 2 == 0) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow
+            val backgroundColor =
+                if (index % 2 == 0) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -234,6 +236,7 @@ fun getTableData(item: Any?): List<RowData> {
             RowData("Size of Commands", item.sizeofcmds.toString()),
             RowData("Flags", item.flags)
         )
+
         is Section -> listOf(
             RowData("Section Name", item.sectname),
             RowData("Segment Name", item.segname),
@@ -248,6 +251,7 @@ fun getTableData(item: Any?): List<RowData> {
             RowData("Reserved1", item.reserved1),
             RowData("Reserved2", item.reserved2)
         )
+
         is SegmentCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString()),
@@ -261,6 +265,7 @@ fun getTableData(item: Any?): List<RowData> {
             RowData("Number Of Sections", item.nsects.toString()),
             RowData("Flags", item.flags)
         )
+
         is DyldInfoCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString()),
@@ -275,6 +280,7 @@ fun getTableData(item: Any?): List<RowData> {
             RowData("Export Offset", item.exportOff.toString()),
             RowData("Export Size", item.exportSize.toString())
         )
+
         is SymtabCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString()),
@@ -283,6 +289,7 @@ fun getTableData(item: Any?): List<RowData> {
             RowData("String Table Offset", item.stroff.toString()),
             RowData("String Table Size", item.strsize.toString())
         )
+
         is DysymtabCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString()),
@@ -290,6 +297,7 @@ fun getTableData(item: Any?): List<RowData> {
             RowData("Number of local symbols", item.nlocalsym.toString())
             // ... truncated for brevity, can add more if needed
         )
+
         is DylibCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString()),
@@ -298,11 +306,13 @@ fun getTableData(item: Any?): List<RowData> {
             RowData("Current Version", item.currentVersion),
             RowData("Compatibility Version", item.compatibilityVersion)
         )
+
         is UuidCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString()),
             RowData("UUID", item.uuid)
         )
+
         is BuildVersionCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString()),
@@ -310,22 +320,26 @@ fun getTableData(item: Any?): List<RowData> {
             RowData("Min OS", item.minos),
             RowData("SDK", item.sdk)
         )
+
         is MainCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString()),
             RowData("Entry Offset", item.entryoff.toString()),
             RowData("Stack Size", item.stacksize.toString())
         )
+
         is LinkeditDataCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString()),
             RowData("Data Offset", item.dataoff.toString()),
             RowData("Data Size", item.datasize.toString())
         )
+
         is UnknownLoadCommand -> listOf(
             RowData("Command", item.cmd),
             RowData("Command Size", item.cmdSize.toString())
         ) + item.lines.map { RowData("Info", it) }
+
         else -> emptyList()
     }
 }
