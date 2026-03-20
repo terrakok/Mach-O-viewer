@@ -58,11 +58,11 @@ fun Tree(
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            val rootName = "Executable (${machOFile.header.cputype})"
-            TreeItem(
-                text = rootName,
-                isSelected = false,
-                onClick = {}
+            Text(
+                text = "Executable (${machOFile.header.cputype})",
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
             )
         }
         item {
