@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -22,14 +23,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import javax.print.attribute.standard.Destination
 
 @Composable
 fun MachOView(machOFile: MachOFile) {
     var selectedBinary by remember { mutableStateOf(machOFile.binaries.first()) }
     var selectedItem by remember(selectedBinary) { mutableStateOf<Any>(selectedBinary.header) }
     var showBinaryPopup by remember { mutableStateOf(false) }
-    var highlightedOffset by remember(selectedItem) { mutableStateOf<Long?>(null) }
-    var highlightedSize by remember { mutableStateOf(0) }
+    var highlightedOffset by remember { mutableStateOf<Long?>(null) }
+    var highlightedSize by remember { mutableStateOf(0L) }
 
     DropdownMenu(
         expanded = showBinaryPopup,
@@ -62,7 +64,16 @@ fun MachOView(machOFile: MachOFile) {
                 onBinaryClick = {
                     showBinaryPopup = true
                 }
-            ) { selectedItem = it }
+            ) { item ->
+                if (item is LoadCommand) {
+                    highlightedOffset = item.offset
+                    highlightedSize = item.cmdSize
+                } else if (item is MachHeader) {
+                    highlightedOffset = item.offset
+                    highlightedSize = 4
+                }
+                selectedItem = item
+            }
         }
 
         VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -94,7 +105,7 @@ fun MachOView(machOFile: MachOFile) {
 }
 
 @Composable
-fun HexViewer(content: ByteArray, highlightedOffset: Long? = null, highlightedSize: Int = 0) {
+fun HexViewer(content: ByteArray, highlightedOffset: Long?, highlightedSize: Long) {
     val scrollState = rememberLazyListState()
     val bytesPerLine = 16
 
@@ -139,7 +150,8 @@ fun HexViewer(content: ByteArray, highlightedOffset: Long? = null, highlightedSi
                     Row(modifier = Modifier.width(380.dp)) {
                         for (i in start until start + bytesPerLine) {
                             val isHighlighted = highlightedOffset != null &&
-                                    i >= highlightedOffset && i < highlightedOffset + highlightedSize
+                                    i >= highlightedOffset &&
+                                    i < highlightedOffset + highlightedSize.coerceAtLeast(bytesPerLine.toLong())
                             val color = if (isHighlighted) {
                                 MaterialTheme.colorScheme.onPrimaryContainer
                             } else {
@@ -352,7 +364,7 @@ fun TableHeader() {
             .padding(vertical = 4.dp)
     ) {
         TableCell("Address", Modifier.width(100.dp), fontWeight = FontWeight.Bold)
-        TableCell("Data", Modifier.width(200.dp), fontWeight = FontWeight.Bold)
+        TableCell("Data", Modifier.width(150.dp), fontWeight = FontWeight.Bold)
         TableCell("Description", Modifier.width(250.dp), fontWeight = FontWeight.Bold)
         TableCell("Value", Modifier.weight(1f), fontWeight = FontWeight.Bold)
     }
@@ -373,12 +385,25 @@ fun TableContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(backgroundColor)
-                    .clickable { if (row.destination != null) { onAddressClick(row.destination) } }
+                    .clickable(row.destination != null) {
+                        if (row.destination != null) {
+                            onAddressClick(row.destination)
+                        }
+                    }
                     .padding(vertical = 2.dp),
             ) {
                 TableCell(row.address, Modifier.width(100.dp))
-                TableCell(row.data, Modifier.width(200.dp))
-                TableCell(row.description, Modifier.width(250.dp))
+                TableCell(row.data, Modifier.width(150.dp))
+                Row(Modifier.width(250.dp)) {
+                    TableCell(row.description, Modifier.weight(1f))
+                    if (row.destination != null) {
+                        Icon(
+                            AppIcons.ArrowBadgeLeft,
+                            contentDescription = "Go to address",
+                            modifier = Modifier.size(16.dp).rotate(180f)
+                        )
+                    }
+                }
                 TableCell(row.value, Modifier.weight(1f))
             }
         }
@@ -388,7 +413,7 @@ fun TableContent(
 @Composable
 fun RowScope.TableCell(
     text: String,
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
     fontWeight: FontWeight = FontWeight.Normal,
     color: Color = MaterialTheme.colorScheme.onSurface
 ) {
@@ -416,7 +441,7 @@ data class RowData(
 
 data class DataDestination(
     val offset: Long,
-    val size: Int
+    val size: Long = 0
 )
 
 fun getTableData(item: Any?, content: ByteArray): List<RowData> {
@@ -446,8 +471,18 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
                 RowData("CPU Type", item.cputype, (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
                 RowData("CPU Subtype", item.cpusubtype, (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
                 RowData("File Type", item.filetype, (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
-                RowData("Number of Commands", item.ncmds.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
-                RowData("Size of Commands", item.sizeofcmds.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4)),
+                RowData(
+                    "Number of Commands",
+                    item.ncmds.toString(),
+                    (offset + 16).toHexAddress(),
+                    readHex(offset + 16, 4)
+                ),
+                RowData(
+                    "Size of Commands",
+                    item.sizeofcmds.toString(),
+                    (offset + 20).toHexAddress(),
+                    readHex(offset + 20, 4)
+                ),
                 RowData("Flags", item.flags, (offset + 24).toHexAddress(), readHex(offset + 24, 4))
             )
             if (is64Bit) {
@@ -470,15 +505,37 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
             current += pSize
             rows.add(RowData("Size", item.size, current.toHexAddress(), readHex(current, pSize)))
             current += pSize
-            rows.add(RowData("Offset", item.offset.toString(), current.toHexAddress(), readHex(current, 4)))
+            rows.add(
+                RowData(
+                    "Offset",
+                    item.offset.toString(),
+                    current.toHexAddress(),
+                    readHex(current, 4),
+                    DataDestination(item.offset)
+                )
+            )
             current += 4
             rows.add(RowData("Alignment", item.align, current.toHexAddress(), readHex(current, 4)))
             current += 4
             rows.add(RowData("Relocation Offset", item.reloff.toString(), current.toHexAddress(), readHex(current, 4)))
             current += 4
-            rows.add(RowData("Number of Relocations", item.nreloc.toString(), current.toHexAddress(), readHex(current, 4)))
+            rows.add(
+                RowData(
+                    "Number of Relocations",
+                    item.nreloc.toString(),
+                    current.toHexAddress(),
+                    readHex(current, 4)
+                )
+            )
             current += 4
-            rows.add(RowData("Flags (Type/Attributes)", "${item.type} / ${item.attributes}", current.toHexAddress(), readHex(current, 4)))
+            rows.add(
+                RowData(
+                    "Flags (Type/Attributes)",
+                    "${item.type} / ${item.attributes}",
+                    current.toHexAddress(),
+                    readHex(current, 4)
+                )
+            )
             current += 4
             rows.add(RowData("Reserved1", item.reserved1, current.toHexAddress(), readHex(current, 4)))
             current += 4
@@ -506,7 +563,14 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
             current += addrSize
             rows.add(RowData("VM Size", item.vmsize, current.toHexAddress(), readHex(current, addrSize)))
             current += addrSize
-            rows.add(RowData("File Offset", item.fileoff.toString(), current.toHexAddress(), readHex(current, addrSize)))
+            rows.add(
+                RowData(
+                    "File Offset",
+                    item.fileoff.toString(),
+                    current.toHexAddress(),
+                    readHex(current, addrSize)
+                )
+            )
             current += addrSize
             rows.add(RowData("File Size", item.filesize.toString(), current.toHexAddress(), readHex(current, addrSize)))
             current += addrSize
@@ -526,16 +590,56 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
             listOf(
                 RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
                 RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
-                RowData("Rebase Offset", item.rebaseOff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
-                RowData("Rebase Size", item.rebaseSize.toString(), (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
+                RowData(
+                    "Rebase Offset",
+                    item.rebaseOff.toString(),
+                    (offset + 8).toHexAddress(),
+                    readHex(offset + 8, 4)
+                ),
+                RowData(
+                    "Rebase Size",
+                    item.rebaseSize.toString(),
+                    (offset + 12).toHexAddress(),
+                    readHex(offset + 12, 4)
+                ),
                 RowData("Bind Offset", item.bindOff.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
                 RowData("Bind Size", item.bindSize.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4)),
-                RowData("Weak Bind Offset", item.weakBindOff.toString(), (offset + 24).toHexAddress(), readHex(offset + 24, 4)),
-                RowData("Weak Bind Size", item.weakBindSize.toString(), (offset + 28).toHexAddress(), readHex(offset + 28, 4)),
-                RowData("Lazy Bind Offset", item.lazyBindOff.toString(), (offset + 32).toHexAddress(), readHex(offset + 32, 4)),
-                RowData("Lazy Bind Size", item.lazyBindSize.toString(), (offset + 36).toHexAddress(), readHex(offset + 36, 4)),
-                RowData("Export Offset", item.exportOff.toString(), (offset + 40).toHexAddress(), readHex(offset + 40, 4)),
-                RowData("Export Size", item.exportSize.toString(), (offset + 44).toHexAddress(), readHex(offset + 44, 4))
+                RowData(
+                    "Weak Bind Offset",
+                    item.weakBindOff.toString(),
+                    (offset + 24).toHexAddress(),
+                    readHex(offset + 24, 4)
+                ),
+                RowData(
+                    "Weak Bind Size",
+                    item.weakBindSize.toString(),
+                    (offset + 28).toHexAddress(),
+                    readHex(offset + 28, 4)
+                ),
+                RowData(
+                    "Lazy Bind Offset",
+                    item.lazyBindOff.toString(),
+                    (offset + 32).toHexAddress(),
+                    readHex(offset + 32, 4)
+                ),
+                RowData(
+                    "Lazy Bind Size",
+                    item.lazyBindSize.toString(),
+                    (offset + 36).toHexAddress(),
+                    readHex(offset + 36, 4)
+                ),
+                RowData(
+                    "Export Offset",
+                    item.exportOff.toString(),
+                    (offset + 40).toHexAddress(),
+                    readHex(offset + 40, 4)
+                ),
+                RowData(
+                    "Export Size",
+                    item.exportSize.toString(),
+                    (offset + 44).toHexAddress(),
+                    readHex(offset + 44, 4)
+                )
             )
         }
 
@@ -544,10 +648,29 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
             listOf(
                 RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
                 RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
-                RowData("Symbol Offset", item.symoff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
-                RowData("Number of Symbols", item.nsyms.toString(), (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
-                RowData("String Table Offset", item.stroff.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
-                RowData("String Table Size", item.strsize.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4))
+                RowData(
+                    "Symbol Offset", item.symoff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4),
+                    DataDestination(item.symoff)
+                ),
+                RowData(
+                    "Number of Symbols",
+                    item.nsyms.toString(),
+                    (offset + 12).toHexAddress(),
+                    readHex(offset + 12, 4)
+                ),
+                RowData(
+                    "String Table Offset",
+                    item.stroff.toString(),
+                    (offset + 16).toHexAddress(),
+                    readHex(offset + 16, 4),
+                    DataDestination(item.stroff, item.strsize)
+                ),
+                RowData(
+                    "String Table Size",
+                    item.strsize.toString(),
+                    (offset + 20).toHexAddress(),
+                    readHex(offset + 20, 4)
+                )
             )
         }
 
@@ -556,24 +679,114 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
             listOf(
                 RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
                 RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
-                RowData("Index to local symbols", item.ilocalsym.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
-                RowData("Number of local symbols", item.nlocalsym.toString(), (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
-                RowData("Index to externally defined symbols", item.iextdefsym.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
-                RowData("Number of externally defined symbols", item.nextdefsym.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4)),
-                RowData("Index to undefined symbols", item.iundefsym.toString(), (offset + 24).toHexAddress(), readHex(offset + 24, 4)),
-                RowData("Number of undefined symbols", item.nundefsym.toString(), (offset + 28).toHexAddress(), readHex(offset + 28, 4)),
-                RowData("Table of contents offset", item.tocoff.toString(), (offset + 32).toHexAddress(), readHex(offset + 32, 4)),
-                RowData("Number of entries in table of contents", item.ntoc.toString(), (offset + 36).toHexAddress(), readHex(offset + 36, 4)),
-                RowData("Module table offset", item.modtaboff.toString(), (offset + 40).toHexAddress(), readHex(offset + 40, 4)),
-                RowData("Number of entries in module table", item.nmodtab.toString(), (offset + 44).toHexAddress(), readHex(offset + 44, 4)),
-                RowData("External reference symbol table offset", item.extrefsymoff.toString(), (offset + 48).toHexAddress(), readHex(offset + 48, 4)),
-                RowData("Number of entries in external reference symbol table", item.nextrefsyms.toString(), (offset + 52).toHexAddress(), readHex(offset + 52, 4)),
-                RowData("Indirect symbol table offset", item.indirectsymoff.toString(), (offset + 56).toHexAddress(), readHex(offset + 56, 4)),
-                RowData("Number of entries in indirect symbol table", item.nindirectsyms.toString(), (offset + 60).toHexAddress(), readHex(offset + 60, 4)),
-                RowData("External relocation entries offset", item.extreloff.toString(), (offset + 64).toHexAddress(), readHex(offset + 64, 4)),
-                RowData("Number of external relocation entries", item.nextrel.toString(), (offset + 68).toHexAddress(), readHex(offset + 68, 4)),
-                RowData("Local relocation entries offset", item.locreloff.toString(), (offset + 72).toHexAddress(), readHex(offset + 72, 4)),
-                RowData("Number of local relocation entries", item.nlocrel.toString(), (offset + 76).toHexAddress(), readHex(offset + 76, 4))
+                RowData(
+                    "Index to local symbols",
+                    item.ilocalsym.toString(),
+                    (offset + 8).toHexAddress(),
+                    readHex(offset + 8, 4)
+                ),
+                RowData(
+                    "Number of local symbols",
+                    item.nlocalsym.toString(),
+                    (offset + 12).toHexAddress(),
+                    readHex(offset + 12, 4)
+                ),
+                RowData(
+                    "Index to externally defined symbols",
+                    item.iextdefsym.toString(),
+                    (offset + 16).toHexAddress(),
+                    readHex(offset + 16, 4)
+                ),
+                RowData(
+                    "Number of externally defined symbols",
+                    item.nextdefsym.toString(),
+                    (offset + 20).toHexAddress(),
+                    readHex(offset + 20, 4)
+                ),
+                RowData(
+                    "Index to undefined symbols",
+                    item.iundefsym.toString(),
+                    (offset + 24).toHexAddress(),
+                    readHex(offset + 24, 4)
+                ),
+                RowData(
+                    "Number of undefined symbols",
+                    item.nundefsym.toString(),
+                    (offset + 28).toHexAddress(),
+                    readHex(offset + 28, 4)
+                ),
+                RowData(
+                    "Table of contents offset",
+                    item.tocoff.toString(),
+                    (offset + 32).toHexAddress(),
+                    readHex(offset + 32, 4)
+                ),
+                RowData(
+                    "Number of entries in table of contents",
+                    item.ntoc.toString(),
+                    (offset + 36).toHexAddress(),
+                    readHex(offset + 36, 4)
+                ),
+                RowData(
+                    "Module table offset",
+                    item.modtaboff.toString(),
+                    (offset + 40).toHexAddress(),
+                    readHex(offset + 40, 4)
+                ),
+                RowData(
+                    "Number of entries in module table",
+                    item.nmodtab.toString(),
+                    (offset + 44).toHexAddress(),
+                    readHex(offset + 44, 4)
+                ),
+                RowData(
+                    "External reference symbol table offset",
+                    item.extrefsymoff.toString(),
+                    (offset + 48).toHexAddress(),
+                    readHex(offset + 48, 4)
+                ),
+                RowData(
+                    "Number of entries in external reference symbol table",
+                    item.nextrefsyms.toString(),
+                    (offset + 52).toHexAddress(),
+                    readHex(offset + 52, 4)
+                ),
+                RowData(
+                    "Indirect symbol table offset",
+                    item.indirectsymoff.toString(),
+                    (offset + 56).toHexAddress(),
+                    readHex(offset + 56, 4)
+                ),
+                RowData(
+                    "Number of entries in indirect symbol table",
+                    item.nindirectsyms.toString(),
+                    (offset + 60).toHexAddress(),
+                    readHex(offset + 60, 4)
+                ),
+                RowData(
+                    "External relocation entries offset",
+                    item.extreloff.toString(),
+                    (offset + 64).toHexAddress(),
+                    readHex(offset + 64, 4)
+                ),
+                RowData(
+                    "Number of external relocation entries",
+                    item.nextrel.toString(),
+                    (offset + 68).toHexAddress(),
+                    readHex(offset + 68, 4)
+                ),
+                RowData(
+                    "Local relocation entries offset",
+                    item.locreloff.toString(),
+                    (offset + 72).toHexAddress(),
+                    readHex(offset + 72, 4)
+                ),
+                RowData(
+                    "Number of local relocation entries",
+                    item.nlocrel.toString(),
+                    (offset + 76).toHexAddress(),
+                    readHex(offset + 76, 4)
+                )
             )
         }
 
@@ -585,7 +798,12 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
                 RowData("Name", item.name, (offset + 24).toHexAddress(), ""),
                 RowData("Time Stamp", item.timestamp, (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
                 RowData("Current Version", item.currentVersion, (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
-                RowData("Compatibility Version", item.compatibilityVersion, (offset + 16).toHexAddress(), readHex(offset + 16, 4))
+                RowData(
+                    "Compatibility Version",
+                    item.compatibilityVersion,
+                    (offset + 16).toHexAddress(),
+                    readHex(offset + 16, 4)
+                )
             )
         }
 
@@ -615,7 +833,12 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
                 RowData("Platform", item.platform, (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
                 RowData("Min OS", item.minos, (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
                 RowData("SDK", item.sdk, (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
-                RowData("Number of Tools", item.ntools.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4))
+                RowData(
+                    "Number of Tools",
+                    item.ntools.toString(),
+                    (offset + 20).toHexAddress(),
+                    readHex(offset + 20, 4)
+                )
             )
             item.tools.forEachIndexed { index, tool ->
                 val toolOffset = offset + 24 + index * 8
@@ -639,7 +862,10 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
             listOf(
                 RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
                 RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
-                RowData("Entry Offset", item.entryoff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 8)),
+                RowData(
+                    "Entry Offset", item.entryoff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 8),
+                    DataDestination(item.entryoff)
+                ),
                 RowData("Stack Size", item.stacksize.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 8))
             )
         }
@@ -649,7 +875,10 @@ fun getTableData(item: Any?, content: ByteArray): List<RowData> {
             listOf(
                 RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
                 RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
-                RowData("Data Offset", item.dataoff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
+                RowData(
+                    "Data Offset", item.dataoff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4),
+                    DataDestination(item.dataoff, item.datasize)
+                ),
                 RowData("Data Size", item.datasize.toString(), (offset + 12).toHexAddress(), readHex(offset + 12, 4))
             )
         }
