@@ -31,7 +31,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg)
             packageName = "Mach-O viewer"
-            packageVersion = "1.0.0"
+            packageVersion = project.findProperty("appVersion")?.toString() ?: "1.0.0"
 
             macOS {
                 iconFile.set(project.file("appIcons/MacosIcon.icns"))
