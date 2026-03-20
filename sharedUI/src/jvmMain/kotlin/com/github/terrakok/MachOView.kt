@@ -69,7 +69,7 @@ fun MachOView(machOFile: MachOFile) {
                 .background(MaterialTheme.colorScheme.background)
         ) {
             TableHeader()
-            TableContent(selectedItem)
+            TableContent(selectedItem, machOFile.content)
         }
     }
 }
@@ -221,8 +221,8 @@ fun TableHeader() {
 }
 
 @Composable
-fun TableContent(selectedItem: Any?) {
-    val data = getTableData(selectedItem)
+fun TableContent(selectedItem: Any?, content: ByteArray) {
+    val data = getTableData(selectedItem, content)
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         itemsIndexed(data) { index, row ->
             val backgroundColor =
@@ -268,120 +268,248 @@ data class RowData(
     val data: String = ""
 )
 
-fun getTableData(item: Any?): List<RowData> {
+fun getTableData(item: Any?, content: ByteArray): List<RowData> {
+    fun Long.toHexAddress() = "%08X".format(this)
+
+    fun readHex(offset: Long, size: Int): String {
+        return try {
+            if (offset < 0 || offset + size > content.size) return ""
+            val start = offset.toInt()
+            val end = start + size
+            val sb = StringBuilder()
+            for (i in start until end) {
+                sb.append("%02X".format(content[i]))
+            }
+            sb.toString()
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     return when (item) {
-        is MachHeader -> listOf(
-            RowData("Magic", item.magic),
-            RowData("CPU Type", item.cputype),
-            RowData("CPU Subtype", item.cpusubtype),
-            RowData("File Type", item.filetype),
-            RowData("Number of Commands", item.ncmds.toString()),
-            RowData("Size of Commands", item.sizeofcmds.toString()),
-            RowData("Flags", item.flags)
-        )
+        is MachHeader -> {
+            val offset = item.offset
+            val is64Bit = item.magic.contains("64")
+            val rows = mutableListOf(
+                RowData("Magic", item.magic, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("CPU Type", item.cputype, (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("CPU Subtype", item.cpusubtype, (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
+                RowData("File Type", item.filetype, (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
+                RowData("Number of Commands", item.ncmds.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
+                RowData("Size of Commands", item.sizeofcmds.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4)),
+                RowData("Flags", item.flags, (offset + 24).toHexAddress(), readHex(offset + 24, 4))
+            )
+            if (is64Bit) {
+                rows.add(RowData("Reserved", item.reserved, (offset + 28).toHexAddress(), readHex(offset + 28, 4)))
+            }
+            rows
+        }
 
-        is Section -> listOf(
-            RowData("Section Name", item.sectname),
-            RowData("Segment Name", item.segname),
-            RowData("Address", item.addr),
-            RowData("Size", item.size),
-            RowData("Offset", item.offset.toString()),
-            RowData("Alignment", item.align),
-            RowData("Relocation Offset", item.reloff.toString()),
-            RowData("Number of Relocations", item.nreloc.toString()),
-            RowData("Type", item.type),
-            RowData("Attributes", item.attributes),
-            RowData("Reserved1", item.reserved1),
-            RowData("Reserved2", item.reserved2)
-        )
+        is Section -> {
+            val offset = item.structureOffset
+            val is64Bit = item.addr.removePrefix("0x").length > 8
+            val pSize = if (is64Bit) 8 else 4
 
-        is SegmentCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString()),
-            RowData("Segment Name", item.segname),
-            RowData("VM Address", item.vmaddr),
-            RowData("VM Size", item.vmsize),
-            RowData("File Offset", item.fileoff.toString()),
-            RowData("File Size", item.filesize.toString()),
-            RowData("Maximum VM Protection", item.maxprot),
-            RowData("Initial VM Protection", item.initprot),
-            RowData("Number Of Sections", item.nsects.toString()),
-            RowData("Flags", item.flags)
-        )
+            val rows = mutableListOf(
+                RowData("Section Name", item.sectname, offset.toHexAddress(), readHex(offset, 16)),
+                RowData("Segment Name", item.segname, (offset + 16).toHexAddress(), readHex(offset + 16, 16))
+            )
+            var current = offset + 32
+            rows.add(RowData("Address", item.addr, current.toHexAddress(), readHex(current, pSize)))
+            current += pSize
+            rows.add(RowData("Size", item.size, current.toHexAddress(), readHex(current, pSize)))
+            current += pSize
+            rows.add(RowData("Offset", item.offset.toString(), current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            rows.add(RowData("Alignment", item.align, current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            rows.add(RowData("Relocation Offset", item.reloff.toString(), current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            rows.add(RowData("Number of Relocations", item.nreloc.toString(), current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            rows.add(RowData("Flags (Type/Attributes)", "${item.type} / ${item.attributes}", current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            rows.add(RowData("Reserved1", item.reserved1, current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            rows.add(RowData("Reserved2", item.reserved2, current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            if (is64Bit) {
+                rows.add(RowData("Reserved3", item.reserved3, current.toHexAddress(), readHex(current, 4)))
+            }
+            rows
+        }
 
-        is DyldInfoCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString()),
-            RowData("Rebase Offset", item.rebaseOff.toString()),
-            RowData("Rebase Size", item.rebaseSize.toString()),
-            RowData("Bind Offset", item.bindOff.toString()),
-            RowData("Bind Size", item.bindSize.toString()),
-            RowData("Weak Bind Offset", item.weakBindOff.toString()),
-            RowData("Weak Bind Size", item.weakBindSize.toString()),
-            RowData("Lazy Bind Offset", item.lazyBindOff.toString()),
-            RowData("Lazy Bind Size", item.lazyBindSize.toString()),
-            RowData("Export Offset", item.exportOff.toString()),
-            RowData("Export Size", item.exportSize.toString())
-        )
+        is SegmentCommand -> {
+            val offset = item.offset
+            val is64Bit = item.cmd == "LC_SEGMENT_64"
+            val addrSize = if (is64Bit) 8 else 4
 
-        is SymtabCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString()),
-            RowData("Symbol Offset", item.symoff.toString()),
-            RowData("Number of Symbols", item.nsyms.toString()),
-            RowData("String Table Offset", item.stroff.toString()),
-            RowData("String Table Size", item.strsize.toString())
-        )
+            val rows = mutableListOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Segment Name", item.segname, (offset + 8).toHexAddress(), readHex(offset + 8, 16))
+            )
 
-        is DysymtabCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString()),
-            RowData("Index to local symbols", item.ilocalsym.toString()),
-            RowData("Number of local symbols", item.nlocalsym.toString())
-            // ... truncated for brevity, can add more if needed
-        )
+            var current = offset + 24
+            rows.add(RowData("VM Address", item.vmaddr, current.toHexAddress(), readHex(current, addrSize)))
+            current += addrSize
+            rows.add(RowData("VM Size", item.vmsize, current.toHexAddress(), readHex(current, addrSize)))
+            current += addrSize
+            rows.add(RowData("File Offset", item.fileoff.toString(), current.toHexAddress(), readHex(current, addrSize)))
+            current += addrSize
+            rows.add(RowData("File Size", item.filesize.toString(), current.toHexAddress(), readHex(current, addrSize)))
+            current += addrSize
+            rows.add(RowData("Maximum VM Protection", item.maxprot, current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            rows.add(RowData("Initial VM Protection", item.initprot, current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            rows.add(RowData("Number Of Sections", item.nsects.toString(), current.toHexAddress(), readHex(current, 4)))
+            current += 4
+            rows.add(RowData("Flags", item.flags, current.toHexAddress(), readHex(current, 4)))
 
-        is DylibCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString()),
-            RowData("Name", item.name),
-            RowData("Time Stamp", item.timestamp),
-            RowData("Current Version", item.currentVersion),
-            RowData("Compatibility Version", item.compatibilityVersion)
-        )
+            rows
+        }
 
-        is UuidCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString()),
-            RowData("UUID", item.uuid)
-        )
+        is DyldInfoCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Rebase Offset", item.rebaseOff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
+                RowData("Rebase Size", item.rebaseSize.toString(), (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
+                RowData("Bind Offset", item.bindOff.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
+                RowData("Bind Size", item.bindSize.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4)),
+                RowData("Weak Bind Offset", item.weakBindOff.toString(), (offset + 24).toHexAddress(), readHex(offset + 24, 4)),
+                RowData("Weak Bind Size", item.weakBindSize.toString(), (offset + 28).toHexAddress(), readHex(offset + 28, 4)),
+                RowData("Lazy Bind Offset", item.lazyBindOff.toString(), (offset + 32).toHexAddress(), readHex(offset + 32, 4)),
+                RowData("Lazy Bind Size", item.lazyBindSize.toString(), (offset + 36).toHexAddress(), readHex(offset + 36, 4)),
+                RowData("Export Offset", item.exportOff.toString(), (offset + 40).toHexAddress(), readHex(offset + 40, 4)),
+                RowData("Export Size", item.exportSize.toString(), (offset + 44).toHexAddress(), readHex(offset + 44, 4))
+            )
+        }
 
-        is BuildVersionCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString()),
-            RowData("Platform", item.platform),
-            RowData("Min OS", item.minos),
-            RowData("SDK", item.sdk)
-        )
+        is SymtabCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Symbol Offset", item.symoff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
+                RowData("Number of Symbols", item.nsyms.toString(), (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
+                RowData("String Table Offset", item.stroff.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
+                RowData("String Table Size", item.strsize.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4))
+            )
+        }
 
-        is MainCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString()),
-            RowData("Entry Offset", item.entryoff.toString()),
-            RowData("Stack Size", item.stacksize.toString())
-        )
+        is DysymtabCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Index to local symbols", item.ilocalsym.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
+                RowData("Number of local symbols", item.nlocalsym.toString(), (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
+                RowData("Index to externally defined symbols", item.iextdefsym.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
+                RowData("Number of externally defined symbols", item.nextdefsym.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4)),
+                RowData("Index to undefined symbols", item.iundefsym.toString(), (offset + 24).toHexAddress(), readHex(offset + 24, 4)),
+                RowData("Number of undefined symbols", item.nundefsym.toString(), (offset + 28).toHexAddress(), readHex(offset + 28, 4)),
+                RowData("Table of contents offset", item.tocoff.toString(), (offset + 32).toHexAddress(), readHex(offset + 32, 4)),
+                RowData("Number of entries in table of contents", item.ntoc.toString(), (offset + 36).toHexAddress(), readHex(offset + 36, 4)),
+                RowData("Module table offset", item.modtaboff.toString(), (offset + 40).toHexAddress(), readHex(offset + 40, 4)),
+                RowData("Number of entries in module table", item.nmodtab.toString(), (offset + 44).toHexAddress(), readHex(offset + 44, 4)),
+                RowData("External reference symbol table offset", item.extrefsymoff.toString(), (offset + 48).toHexAddress(), readHex(offset + 48, 4)),
+                RowData("Number of entries in external reference symbol table", item.nextrefsyms.toString(), (offset + 52).toHexAddress(), readHex(offset + 52, 4)),
+                RowData("Indirect symbol table offset", item.indirectsymoff.toString(), (offset + 56).toHexAddress(), readHex(offset + 56, 4)),
+                RowData("Number of entries in indirect symbol table", item.nindirectsyms.toString(), (offset + 60).toHexAddress(), readHex(offset + 60, 4)),
+                RowData("External relocation entries offset", item.extreloff.toString(), (offset + 64).toHexAddress(), readHex(offset + 64, 4)),
+                RowData("Number of external relocation entries", item.nextrel.toString(), (offset + 68).toHexAddress(), readHex(offset + 68, 4)),
+                RowData("Local relocation entries offset", item.locreloff.toString(), (offset + 72).toHexAddress(), readHex(offset + 72, 4)),
+                RowData("Number of local relocation entries", item.nlocrel.toString(), (offset + 76).toHexAddress(), readHex(offset + 76, 4))
+            )
+        }
 
-        is LinkeditDataCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString()),
-            RowData("Data Offset", item.dataoff.toString()),
-            RowData("Data Size", item.datasize.toString())
-        )
+        is DylibCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Name", item.name, (offset + 24).toHexAddress(), ""),
+                RowData("Time Stamp", item.timestamp, (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
+                RowData("Current Version", item.currentVersion, (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
+                RowData("Compatibility Version", item.compatibilityVersion, (offset + 16).toHexAddress(), readHex(offset + 16, 4))
+            )
+        }
 
-        is UnknownLoadCommand -> listOf(
-            RowData("Command", item.cmd),
-            RowData("Command Size", item.cmdSize.toString())
-        ) + item.lines.map { RowData("Info", it) }
+        is UuidCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("UUID", item.uuid, (offset + 8).toHexAddress(), readHex(offset + 8, 16))
+            )
+        }
+
+        is DylinkerCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Name", item.name, (offset + 12).toHexAddress(), "")
+            )
+        }
+
+        is BuildVersionCommand -> {
+            val offset = item.offset
+            val rows = mutableListOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Platform", item.platform, (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
+                RowData("Min OS", item.minos, (offset + 12).toHexAddress(), readHex(offset + 12, 4)),
+                RowData("SDK", item.sdk, (offset + 16).toHexAddress(), readHex(offset + 16, 4)),
+                RowData("Number of Tools", item.ntools.toString(), (offset + 20).toHexAddress(), readHex(offset + 20, 4))
+            )
+            item.tools.forEachIndexed { index, tool ->
+                val toolOffset = offset + 24 + index * 8
+                rows.add(RowData("Tool", tool.tool, toolOffset.toHexAddress(), readHex(toolOffset, 4)))
+                rows.add(RowData("Version", tool.version, (toolOffset + 4).toHexAddress(), readHex(toolOffset + 4, 4)))
+            }
+            rows
+        }
+
+        is SourceVersionCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Version", item.version, (offset + 8).toHexAddress(), readHex(offset + 8, 8))
+            )
+        }
+
+        is MainCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Entry Offset", item.entryoff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 8)),
+                RowData("Stack Size", item.stacksize.toString(), (offset + 16).toHexAddress(), readHex(offset + 16, 8))
+            )
+        }
+
+        is LinkeditDataCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4)),
+                RowData("Data Offset", item.dataoff.toString(), (offset + 8).toHexAddress(), readHex(offset + 8, 4)),
+                RowData("Data Size", item.datasize.toString(), (offset + 12).toHexAddress(), readHex(offset + 12, 4))
+            )
+        }
+
+        is UnknownLoadCommand -> {
+            val offset = item.offset
+            listOf(
+                RowData("Command", item.cmd, offset.toHexAddress(), readHex(offset, 4)),
+                RowData("Command Size", item.cmdSize.toString(), (offset + 4).toHexAddress(), readHex(offset + 4, 4))
+            ) + item.lines.map { RowData("Info", it) }
+        }
 
         else -> emptyList()
     }
@@ -391,5 +519,6 @@ val LoadCommand.displayName: String
     get() = when (this) {
         is SegmentCommand -> "$cmd ($segname)"
         is DylibCommand -> "$cmd (${name.substringAfterLast("/")})"
+        is DylinkerCommand -> "$cmd (${name.substringAfterLast("/")})"
         else -> cmd
     }
