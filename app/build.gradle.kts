@@ -7,7 +7,15 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":sharedUI"))
+    implementation(libs.compose.runtime)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.resources)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(compose.desktop.currentOs)
+    implementation(libs.kotlinx.coroutines.swing)
 }
 
 compose.desktop {
@@ -15,16 +23,10 @@ compose.desktop {
         mainClass = "MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            targetFormats(TargetFormat.Dmg)
             packageName = "Mach-O viewer"
             packageVersion = "1.0.0"
 
-            linux {
-                iconFile.set(project.file("appIcons/LinuxIcon.png"))
-            }
-            windows {
-                iconFile.set(project.file("appIcons/WindowsIcon.ico"))
-            }
             macOS {
                 iconFile.set(project.file("appIcons/MacosIcon.icns"))
                 bundleID = "com.github.terrakok.desktopApp"
