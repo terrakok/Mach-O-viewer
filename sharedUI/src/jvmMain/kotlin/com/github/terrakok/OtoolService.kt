@@ -1,366 +1,542 @@
 package com.github.terrakok
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+data class MachOFile(
+    val path: String,
+    val header: MachHeader,
+    val loadCommands: List<LoadCommand>
+)
 
-/**
- * A wrapper around the `otool` system program for displaying parts of Mach-O files.
- * Provides all available API from the otool man page.
- * All functions are suspend and execute on [Dispatchers.IO].
- */
-class OtoolService {
+data class MachHeader(
+    val magic: String,
+    val cputype: String,
+    val cpusubtype: String,
+    val filetype: String,
+    val ncmds: Long,
+    val sizeofcmds: Long,
+    val flags: String
+)
 
-    /**
-     * Executes the otool command with arbitrary arguments.
-     * Use this if you need to combine flags that are not provided by specific methods.
-     *
-     * @param args The arguments to pass to the otool command.
-     * @return The standard output of the otool command.
-     */
-    suspend fun otool(vararg args: String): String = execute(*args)
+sealed interface LoadCommand {
+    val cmd: String
+    val cmdSize: Long
+}
 
-    /**
-     * Executes the otool command with the given arguments.
-     *
-     * @param args The arguments to pass to the otool command.
-     * @return The standard output of the otool command.
-     * @throws Exception If the otool command fails or is not found.
-     */
-    private suspend fun execute(vararg args: String): String = withContext(Dispatchers.IO) {
-        try {
-            val process = ProcessBuilder("otool", *args)
-                .redirectErrorStream(true)
-                .start()
+data class Section(
+    val sectname: String,
+    val segname: String,
+    val addr: String,
+    val size: String,
+    val offset: Long,
+    val align: String,
+    val reloff: Long,
+    val nreloc: Long,
+    val type: String,
+    val attributes: String,
+    val reserved1: String,
+    val reserved2: String
+)
 
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            val exitValue = process.waitFor()
+data class SegmentCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val segname: String,
+    val vmaddr: String,
+    val vmsize: String,
+    val fileoff: Long,
+    val filesize: Long,
+    val maxprot: String,
+    val initprot: String,
+    val nsects: Int,
+    val flags: String,
+    val sections: List<Section>
+) : LoadCommand
 
-            if (exitValue != 0) {
-                throw Exception("otool command failed with exit code $exitValue:\n$output")
+data class DyldInfoCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val rebaseOff: Long,
+    val rebaseSize: Long,
+    val bindOff: Long,
+    val bindSize: Long,
+    val weakBindOff: Long,
+    val weakBindSize: Long,
+    val lazyBindOff: Long,
+    val lazyBindSize: Long,
+    val exportOff: Long,
+    val exportSize: Long
+) : LoadCommand
+
+data class SymtabCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val symoff: Long,
+    val nsyms: Long,
+    val stroff: Long,
+    val strsize: Long
+) : LoadCommand
+
+data class DysymtabCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val ilocalsym: Long,
+    val nlocalsym: Long,
+    val iextdefsym: Long,
+    val nextdefsym: Long,
+    val iundefsym: Long,
+    val nundefsym: Long,
+    val tocoff: Long,
+    val ntoc: Long,
+    val modtaboff: Long,
+    val nmodtab: Long,
+    val extrefsymoff: Long,
+    val nextrefsyms: Long,
+    val indirectsymoff: Long,
+    val nindirectsyms: Long,
+    val extreloff: Long,
+    val nextrel: Long,
+    val locreloff: Long,
+    val nlocrel: Long
+) : LoadCommand
+
+data class DylinkerCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val name: String
+) : LoadCommand
+
+data class UuidCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val uuid: String
+) : LoadCommand
+
+data class BuildVersionCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val platform: String,
+    val minos: String,
+    val sdk: String,
+    val ntools: Int,
+    val tools: List<ToolEntry>
+) : LoadCommand
+
+data class ToolEntry(
+    val tool: String,
+    val version: String
+)
+
+data class SourceVersionCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val version: String
+) : LoadCommand
+
+data class MainCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val entryoff: Long,
+    val stacksize: Long
+) : LoadCommand
+
+data class DylibCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val name: String,
+    val timestamp: String,
+    val currentVersion: String,
+    val compatibilityVersion: String
+) : LoadCommand
+
+data class LinkeditDataCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val dataoff: Long,
+    val datasize: Long
+) : LoadCommand
+
+data class UnknownLoadCommand(
+    override val cmd: String,
+    override val cmdSize: Long,
+    val lines: List<String>
+) : LoadCommand
+
+class OtoolService(
+    private val otool: Otool
+) {
+    suspend fun load(path: String): MachOFile {
+        val commandsContent = otool.getLoadCommands(path, verbose = true)
+        val lines = commandsContent.lines().filter { it.isNotBlank() }
+        if (lines.isEmpty()) error("Empty commands content")
+
+        val path = lines[0].removeSuffix(":")
+        val loadCommands = mutableListOf<LoadCommand>()
+
+        var i = 1
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command") || line.startsWith("Load command:", ignoreCase = true)) {
+                val (command, nextIndex) = parseLoadCommand(lines, i)
+                loadCommands.add(command)
+                i = nextIndex
+            } else {
+                i++
             }
+        }
 
-            output
-        } catch (e: Exception) {
-            throw Exception("Failed to execute otool: ${e.message}", e)
+        val headerContent = otool.getMachHeader(path, verbose = true)
+        val header = parseMachHeader(headerContent) ?: error("Failed to parse Mach-O header")
+
+        return MachOFile(path, header, loadCommands)
+    }
+
+    private fun parseMachHeader(content: String): MachHeader? {
+        val lines = content.lines().filter { it.isNotBlank() }
+        if (lines.size < 3) return null
+        
+        // Skip header lines
+        var headerIndex = lines.indexOfFirst { it.contains("magic") && it.contains("cputype") }
+        if (headerIndex == -1) return null
+        
+        val valuesLine = lines[headerIndex + 1].trim()
+        val values = valuesLine.split(Regex("\\s+"))
+        
+        // magic cputype cpusubtype caps filetype ncmds sizeofcmds flags
+        // Sometimes "caps" is present, sometimes not.
+        // Verbose output has caps? Let's check.
+        // MH_MAGIC_64 X86_64 ALL 0x00 EXECUTE 16 1296 NOUNDEFS DYLDLINK TWOLEVEL PIE
+        
+        if (values.size < 7) return null
+        
+        return MachHeader(
+            magic = values[0],
+            cputype = values[1],
+            cpusubtype = values[2],
+            filetype = if (values.size == 8) values[4] else values[3],
+            ncmds = (if (values.size == 8) values[5] else values[4]).toLongOrNull() ?: 0L,
+            sizeofcmds = (if (values.size == 8) values[6] else values[5]).toLongOrNull() ?: 0L,
+            flags = values.last()
+        )
+    }
+
+    private fun parseLoadCommand(lines: List<String>, startIndex: Int): Pair<LoadCommand, Int> {
+        val cmdLine = lines[startIndex + 1].trim()
+        val cmd = cmdLine.substringAfter("cmd ").trim()
+        val sizeLine = lines[startIndex + 2].trim()
+        val cmdSize = sizeLine.substringAfter("cmdsize ").trim().toLong()
+
+        return when (cmd) {
+            "LC_SEGMENT_64", "LC_SEGMENT" -> parseSegmentCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_DYLD_INFO_ONLY", "LC_DYLD_INFO" -> parseDyldInfoCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_SYMTAB" -> parseSymtabCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_DYSYMTAB" -> parseDysymtabCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_LOAD_DYLINKER" -> parseDylinkerCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_UUID" -> parseUuidCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_BUILD_VERSION" -> parseBuildVersionCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_SOURCE_VERSION" -> parseSourceVersionCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_MAIN" -> parseMainCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_LOAD_DYLIB", "LC_ID_DYLIB", "LC_LOAD_WEAK_DYLIB", "LC_REEXPORT_DYLIB" -> parseDylibCommand(lines, startIndex + 1, cmd, cmdSize)
+            "LC_FUNCTION_STARTS", "LC_DATA_IN_CODE", "LC_CODE_SIGNATURE", "LC_DYLIB_CODE_SIGN_DRS" -> parseLinkeditDataCommand(lines, startIndex + 1, cmd, cmdSize)
+            else -> parseUnknownCommand(lines, startIndex + 1, cmd, cmdSize)
         }
     }
 
-    /**
-     * Display the fat headers.
-     * Corresponds to the -f flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @return The output of the otool command.
-     */
-    suspend fun getFatHeaders(path: String): String = execute("-f", path)
+    private fun parseSegmentCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val fields = mutableMapOf<String, String>()
+        val sections = mutableListOf<Section>()
 
-    /**
-     * Display the archive header.
-     * Corresponds to the -a flag.
-     *
-     * @param path The path to the archive file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @return The output of the otool command.
-     */
-    suspend fun getArchiveHeader(path: String, arch: String? = null): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-a")
-        args.add(path)
-        return execute(*args.toTypedArray())
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command") || line.startsWith("Section")) break
+            val key = line.substringBefore(" ").trim()
+            val value = line.substringAfter(" ").trim()
+            fields[key] = value
+            i++
+        }
+
+        while (i < lines.size && lines[i].trim().startsWith("Section")) {
+            val (section, nextIndex) = parseSection(lines, i)
+            sections.add(section)
+            i = nextIndex
+        }
+
+        return SegmentCommand(
+            cmd = cmd,
+            cmdSize = cmdSize,
+            segname = fields["segname"] ?: "",
+            vmaddr = fields["vmaddr"] ?: "",
+            vmsize = fields["vmsize"] ?: "",
+            fileoff = fields["fileoff"]?.toLongOrNull() ?: 0L,
+            filesize = fields["filesize"]?.toLongOrNull() ?: 0L,
+            maxprot = fields["maxprot"] ?: "",
+            initprot = fields["initprot"] ?: "",
+            nsects = fields["nsects"]?.toIntOrNull() ?: 0,
+            flags = fields["flags"] ?: "",
+            sections = sections
+        ) to i
     }
 
-    /**
-     * Display the mach header.
-     * Corresponds to the -h flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @param verbose If true, display the mach header verbosely (symbolically). Corresponds to -v.
-     * @return The output of the otool command.
-     */
-    suspend fun getMachHeader(
-        path: String,
-        arch: String? = null,
-        verbose: Boolean = false
-    ): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-h")
-        if (verbose) args.add("-v")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseSection(lines: List<String>, startIndex: Int): Pair<Section, Int> {
+        var i = startIndex + 1
+        val fields = mutableMapOf<String, String>()
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command") || line.startsWith("Section") || line.startsWith("attributes")) break
+            val key = line.substringBefore(" ").trim()
+            val value = line.substringAfter(" ").trim()
+            fields[key] = value
+            i++
+        }
+
+        var attributes = ""
+        if (i < lines.size && lines[i].trim().startsWith("attributes")) {
+            attributes = lines[i].trim().substringAfter("attributes ").trim()
+            i++
+        }
+
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command") || line.startsWith("Section")) break
+            val key = line.substringBefore(" ").trim()
+            val value = line.substringAfter(" ").trim()
+            fields[key] = value
+            i++
+        }
+
+        return Section(
+            sectname = fields["sectname"] ?: "",
+            segname = fields["segname"] ?: "",
+            addr = fields["addr"] ?: "",
+            size = fields["size"] ?: "",
+            offset = fields["offset"]?.toLongOrNull() ?: 0L,
+            align = fields["align"] ?: "",
+            reloff = fields["reloff"]?.toLongOrNull() ?: 0L,
+            nreloc = fields["nreloc"]?.toLongOrNull() ?: 0L,
+            type = fields["type"] ?: "",
+            attributes = attributes,
+            reserved1 = fields["reserved1"] ?: "",
+            reserved2 = fields["reserved2"] ?: ""
+        ) to i
     }
 
-    /**
-     * Display the load commands.
-     * Corresponds to the -l flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @param verbose If true, display the load commands verbosely (symbolically). Corresponds to -v.
-     * @return The output of the otool command.
-     */
-    suspend fun getLoadCommands(
-        path: String,
-        arch: String? = null,
-        verbose: Boolean = false
-    ): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-l")
-        if (verbose) args.add("-v")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseDyldInfoCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val fields = mutableMapOf<String, String>()
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command")) break
+            val key = line.substringBefore(" ").trim()
+            val value = line.substringAfter(" ").trim()
+            fields[key] = value
+            i++
+        }
+        return DyldInfoCommand(
+            cmd = cmd,
+            cmdSize = cmdSize,
+            rebaseOff = fields["rebase_off"]?.toLongOrNull() ?: 0L,
+            rebaseSize = fields["rebase_size"]?.toLongOrNull() ?: 0L,
+            bindOff = fields["bind_off"]?.toLongOrNull() ?: 0L,
+            bindSize = fields["bind_size"]?.toLongOrNull() ?: 0L,
+            weakBindOff = fields["weak_bind_off"]?.toLongOrNull() ?: 0L,
+            weakBindSize = fields["weak_bind_size"]?.toLongOrNull() ?: 0L,
+            lazyBindOff = fields["lazy_bind_off"]?.toLongOrNull() ?: 0L,
+            lazyBindSize = fields["lazy_bind_size"]?.toLongOrNull() ?: 0L,
+            exportOff = fields["export_off"]?.toLongOrNull() ?: 0L,
+            exportSize = fields["export_size"]?.toLongOrNull() ?: 0L
+        ) to i
     }
 
-    /**
-     * Display the names and version numbers of the shared libraries that the object file uses.
-     * Corresponds to the -L flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @return The output of the otool command.
-     */
-    suspend fun getSharedLibraries(path: String, arch: String? = null): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-L")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseSymtabCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val fields = mutableMapOf<String, String>()
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command")) break
+            val key = line.substringBefore(" ").trim()
+            val value = line.substringAfter(" ").trim()
+            fields[key] = value
+            i++
+        }
+        return SymtabCommand(
+            cmd = cmd,
+            cmdSize = cmdSize,
+            symoff = fields["symoff"]?.toLongOrNull() ?: 0L,
+            nsyms = fields["nsyms"]?.toLongOrNull() ?: 0L,
+            stroff = fields["stroff"]?.toLongOrNull() ?: 0L,
+            strsize = fields["strsize"]?.toLongOrNull() ?: 0L
+        ) to i
     }
 
-    /**
-     * Display just the install name of a shared library.
-     * Corresponds to the -D flag.
-     *
-     * @param path The path to the shared library.
-     * @param arch Specify the architecture to display from a fat file.
-     * @return The output of the otool command.
-     */
-    suspend fun getSharedLibraryIdName(path: String, arch: String? = null): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-D")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseDysymtabCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val fields = mutableMapOf<String, String>()
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command")) break
+            val key = line.substringBefore(" ").trim()
+            val value = line.substringAfter(" ").trim()
+            fields[key] = value
+            i++
+        }
+        return DysymtabCommand(
+            cmd = cmd,
+            cmdSize = cmdSize,
+            ilocalsym = fields["ilocalsym"]?.toLongOrNull() ?: 0L,
+            nlocalsym = fields["nlocalsym"]?.toLongOrNull() ?: 0L,
+            iextdefsym = fields["iextdefsym"]?.toLongOrNull() ?: 0L,
+            nextdefsym = fields["nextdefsym"]?.toLongOrNull() ?: 0L,
+            iundefsym = fields["iundefsym"]?.toLongOrNull() ?: 0L,
+            nundefsym = fields["nundefsym"]?.toLongOrNull() ?: 0L,
+            tocoff = fields["tocoff"]?.toLongOrNull() ?: 0L,
+            ntoc = fields["ntoc"]?.toLongOrNull() ?: 0L,
+            modtaboff = fields["modtaboff"]?.toLongOrNull() ?: 0L,
+            nmodtab = fields["nmodtab"]?.toLongOrNull() ?: 0L,
+            extrefsymoff = fields["extrefsymoff"]?.toLongOrNull() ?: 0L,
+            nextrefsyms = fields["nextrefsyms"]?.toLongOrNull() ?: 0L,
+            indirectsymoff = fields["indirectsymoff"]?.toLongOrNull() ?: 0L,
+            nindirectsyms = fields["nindirectsyms"]?.toLongOrNull() ?: 0L,
+            extreloff = fields["extreloff"]?.toLongOrNull() ?: 0L,
+            nextrel = fields["nextrel"]?.toLongOrNull() ?: 0L,
+            locreloff = fields["locreloff"]?.toLongOrNull() ?: 0L,
+            nlocrel = fields["nlocrel"]?.toLongOrNull() ?: 0L
+        ) to i
     }
 
-    /**
-     * Display the contents of the (__TEXT,__text) section.
-     * With [verbose], this disassembles the text.
-     * With [verboseOperands], it also symbolically disassembles the operands.
-     * Corresponds to the -t flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @param verbose If true, disassemble the text. Corresponds to -v.
-     * @param verboseOperands If true, symbolically disassemble operands. Corresponds to -V.
-     * @param noAddresses If true, don't print leading addresses or headers. Corresponds to -X.
-     * @param llvmDisassembler If true, use the llvm disassembler. Corresponds to -q.
-     * @param mcpu When disassembling, use the specified mcpu. Corresponds to -mcpu=arg.
-     * @param printOpcodes When disassembling, print the disassembled opcodes. Corresponds to -j.
-     * @param startSymbol When disassembling, start disassembly at the specified symbol. Corresponds to -p name.
-     * @param dontAssumeMachOTarget If true, don't assume the target of a call or jump is another Mach-O file. Corresponds to -m.
-     * @return The output of the otool command.
-     */
-    suspend fun getTextSection(
-        path: String,
-        arch: String? = null,
-        verbose: Boolean = false,
-        verboseOperands: Boolean = false,
-        noAddresses: Boolean = false,
-        llvmDisassembler: Boolean = false,
-        mcpu: String? = null,
-        printOpcodes: Boolean = false,
-        startSymbol: String? = null,
-        dontAssumeMachOTarget: Boolean = false
-    ): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-t")
-        if (verbose) args.add("-v")
-        if (verboseOperands) args.add("-V")
-        if (noAddresses) args.add("-X")
-        if (llvmDisassembler) args.add("-q")
-        mcpu?.let { args.add("-mcpu=$it") }
-        if (printOpcodes) args.add("-j")
-        startSymbol?.let { args.add("-p"); args.add(it) }
-        if (dontAssumeMachOTarget) args.add("-m")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseDylinkerCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val line = lines[i].trim()
+        val name = line.substringAfter("name ").trim().substringBefore(" (offset")
+        return DylinkerCommand(cmd, cmdSize, name) to i + 1
     }
 
-    /**
-     * Display the contents of the (__DATA,__data) section.
-     * Corresponds to the -d flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @return The output of the otool command.
-     */
-    suspend fun getDataSection(path: String, arch: String? = null): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-d")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseUuidCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val line = lines[i].trim()
+        val uuid = line.substringAfter("uuid ").trim()
+        return UuidCommand(cmd, cmdSize, uuid) to i + 1
     }
 
-    /**
-     * Display the contents of the __OBJC segment.
-     * Corresponds to the -o flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @param verbose If true, display the Objective-C segment verbosely. Corresponds to -v.
-     * @return The output of the otool command.
-     */
-    suspend fun getObjectiveCSegment(
-        path: String,
-        arch: String? = null,
-        verbose: Boolean = false
-    ): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-o")
-        if (verbose) args.add("-v")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseBuildVersionCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val fields = mutableMapOf<String, String>()
+        val tools = mutableListOf<ToolEntry>()
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command") || line.startsWith("tool")) break
+            val key = line.substringBefore(" ").trim()
+            val value = line.substringAfter(" ").trim()
+            fields[key] = value
+            i++
+        }
+        while (i < lines.size && lines[i].trim().startsWith("tool")) {
+            val toolLine = lines[i].trim()
+            val versionLine = lines[i + 1].trim()
+            tools.add(ToolEntry(
+                tool = toolLine.substringAfter("tool ").trim(),
+                version = versionLine.substringAfter("version ").trim()
+            ))
+            i += 2
+        }
+        return BuildVersionCommand(
+            cmd = cmd,
+            cmdSize = cmdSize,
+            platform = fields["platform"] ?: "",
+            minos = fields["minos"] ?: "",
+            sdk = fields["sdk"] ?: "",
+            ntools = fields["ntools"]?.toIntOrNull() ?: 0,
+            tools = tools
+        ) to i
     }
 
-    /**
-     * Display the relocation entries.
-     * Corresponds to the -r flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @return The output of the otool command.
-     */
-    suspend fun getRelocationEntries(path: String, arch: String? = null): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-r")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseSourceVersionCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val line = lines[i].trim()
+        val version = line.substringAfter("version ").trim()
+        return SourceVersionCommand(cmd, cmdSize, version) to i + 1
     }
 
-    /**
-     * Display the contents of the __LINKEDIT segment's symbolic information.
-     * Corresponds to the -S flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @return The output of the otool command.
-     */
-    suspend fun getLinkEditSegment(path: String, arch: String? = null): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-S")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseMainCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val fields = mutableMapOf<String, String>()
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command")) break
+            val key = line.substringBefore(" ").trim()
+            val value = line.substringAfter(" ").trim()
+            fields[key] = value
+            i++
+        }
+        return MainCommand(
+            cmd = cmd,
+            cmdSize = cmdSize,
+            entryoff = fields["entryoff"]?.toLongOrNull() ?: 0L,
+            stacksize = fields["stacksize"]?.toLongOrNull() ?: 0L
+        ) to i
     }
 
-    /**
-     * Display the indirect symbol table.
-     * Corresponds to the -I flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @param verbose If true, display the indirect symbol table verbosely. Corresponds to -v.
-     * @return The output of the otool command.
-     */
-    suspend fun getIndirectSymbolTable(
-        path: String,
-        arch: String? = null,
-        verbose: Boolean = false
-    ): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-I")
-        if (verbose) args.add("-v")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseDylibCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val fields = mutableMapOf<String, String>()
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command")) break
+            when {
+                line.startsWith("name ") -> {
+                    fields["name"] = line.substringAfter("name ").trim().substringBefore(" (offset")
+                }
+                line.startsWith("time stamp ") -> {
+                    fields["timestamp"] = line.substringAfter("time stamp ").trim()
+                }
+                line.contains(" version ") -> {
+                    val key = line.substringBefore(" version ").trim()
+                    fields[key + "Version"] = line.substringAfter(" version ").trim()
+                }
+                else -> {
+                    val key = line.substringBefore(" ").trim()
+                    val value = line.substringAfter(" ").trim()
+                    fields[key] = value
+                }
+            }
+            i++
+        }
+        return DylibCommand(
+            cmd = cmd,
+            cmdSize = cmdSize,
+            name = fields["name"] ?: "",
+            timestamp = fields["timestamp"] ?: "",
+            currentVersion = fields["currentVersion"] ?: "",
+            compatibilityVersion = fields["compatibilityVersion"] ?: ""
+        ) to i
     }
 
-    /**
-     * Display the data in code table.
-     * Corresponds to the -G flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @return The output of the otool command.
-     */
-    suspend fun getDataInCodeTable(path: String, arch: String? = null): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-G")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseLinkeditDataCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val fields = mutableMapOf<String, String>()
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command")) break
+            val key = line.substringBefore(" ").trim()
+            val value = line.substringAfter(" ").trim()
+            fields[key] = value
+            i++
+        }
+        return LinkeditDataCommand(
+            cmd = cmd,
+            cmdSize = cmdSize,
+            dataoff = fields["dataoff"]?.toLongOrNull() ?: 0L,
+            datasize = fields["datasize"]?.toLongOrNull() ?: 0L
+        ) to i
     }
 
-    /**
-     * Display the contents of the specified section.
-     * Corresponds to the -s segname sectname flag.
-     *
-     * @param path The path to the Mach-O file.
-     * @param segname The segment name.
-     * @param sectname The section name.
-     * @param arch Specify the architecture to display from a fat file.
-     * @param verbose If true, display the section verbosely. Corresponds to -v.
-     * @param verboseOperands If true, symbolically disassemble operands. Corresponds to -V.
-     * @param noAddresses If true, don't print leading addresses or headers. Corresponds to -X.
-     * @param llvmDisassembler If true, use the llvm disassembler. Corresponds to -q.
-     * @param mcpu When disassembling, use the specified mcpu. Corresponds to -mcpu=arg.
-     * @param printOpcodes When disassembling, print the disassembled opcodes. Corresponds to -j.
-     * @param startSymbol When disassembling, start disassembly at the specified symbol. Corresponds to -p name.
-     * @param dontAssumeMachOTarget If true, don't assume the target of a call or jump is another Mach-O file. Corresponds to -m.
-     * @return The output of the otool command.
-     */
-    suspend fun getSection(
-        path: String,
-        segname: String,
-        sectname: String,
-        arch: String? = null,
-        verbose: Boolean = false,
-        verboseOperands: Boolean = false,
-        noAddresses: Boolean = false,
-        llvmDisassembler: Boolean = false,
-        mcpu: String? = null,
-        printOpcodes: Boolean = false,
-        startSymbol: String? = null,
-        dontAssumeMachOTarget: Boolean = false
-    ): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-s")
-        args.add(segname)
-        args.add(sectname)
-        if (verbose) args.add("-v")
-        if (verboseOperands) args.add("-V")
-        if (noAddresses) args.add("-X")
-        if (llvmDisassembler) args.add("-q")
-        mcpu?.let { args.add("-mcpu=$it") }
-        if (printOpcodes) args.add("-j")
-        startSymbol?.let { args.add("-p"); args.add(it) }
-        if (dontAssumeMachOTarget) args.add("-m")
-        args.add(path)
-        return execute(*args.toTypedArray())
-    }
-
-    /**
-     * Display the argument strings (argc, argv, envp) from a core file.
-     * Corresponds to the -c flag.
-     *
-     * @param path The path to the core file.
-     * @param arch Specify the architecture to display from a fat file.
-     * @return The output of the otool command.
-     */
-    suspend fun getArgumentStrings(path: String, arch: String? = null): String {
-        val args = mutableListOf<String>()
-        arch?.let { args.add("-arch"); args.add(it) }
-        args.add("-c")
-        args.add(path)
-        return execute(*args.toTypedArray())
+    private fun parseUnknownCommand(lines: List<String>, cmdIndex: Int, cmd: String, cmdSize: Long): Pair<LoadCommand, Int> {
+        var i = cmdIndex + 2
+        val unknownLines = mutableListOf<String>()
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Load command")) break
+            unknownLines.add(line)
+            i++
+        }
+        return UnknownLoadCommand(cmd, cmdSize, unknownLines) to i
     }
 }

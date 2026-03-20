@@ -96,7 +96,7 @@ fun FileDropScreen(onFileDropped: (String) -> Unit) {
             modifier = Modifier.padding(24.dp)
         ) {
             Icon(
-                imageVector = Icons.BinFile,
+                imageVector = AppIcons.BinFile,
                 "File icon",
                 Modifier.size(64.dp),
                 tint = iconColor

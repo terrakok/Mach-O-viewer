@@ -5,17 +5,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.github.terrakok.theme.AppTheme
 import kotlinx.coroutines.launch
 
 @Composable
 fun App() = AppTheme {
-    var fileName: String? by remember { mutableStateOf(null) }
+    var machOFile: MachOFile? by remember { mutableStateOf(null) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val fileService = remember { FileService() }
+    val otoolService = remember { OtoolService(Otool()) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
@@ -24,38 +24,32 @@ fun App() = AppTheme {
             modifier = Modifier.fillMaxSize().padding(paddingValues),
             contentAlignment = Alignment.Center
         ) {
-            if (fileName == null) {
+            if (machOFile == null) {
                 FileDropScreen(
                     onFileDropped = { droppedPath ->
                         scope.launch {
                             if (fileService.isMachO(droppedPath)) {
-                                fileName = droppedPath
+                                try {
+                                    machOFile = otoolService.load(droppedPath)
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar("Failed to parse file: ${e.message}")
+                                }
                             } else {
-                                fileName = null
-                                snackbarHostState.showSnackbar("Wrong file type.")
+                                snackbarHostState.showSnackbar("File is not a Mach-O file")
                             }
                         }
                     }
                 )
             } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Dropped file:",
-                        color = MaterialTheme.colorScheme.onBackground,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = fileName!!,
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(24.dp))
+                Box(Modifier.fillMaxSize()) {
+                    MachOView(machOFile!!)
+                    
+                    // Simple back button to return to drop screen
                     Button(
-                        onClick = { fileName = null }
+                        onClick = { machOFile = null },
+                        modifier = Modifier.padding(16.dp).align(Alignment.BottomEnd)
                     ) {
-                        Text("Clear")
+                        Text("Close")
                     }
                 }
             }
