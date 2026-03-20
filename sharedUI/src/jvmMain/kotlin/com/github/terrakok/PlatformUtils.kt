@@ -10,7 +10,7 @@ fun pickFile(onFileSelected: (String?) -> Unit) {
     val fileDialog = FileDialog(null as Frame?, "Select a file", FileDialog.LOAD)
     fileDialog.isVisible = true
     if (fileDialog.file != null) {
-        onFileSelected(fileDialog.file)
+        onFileSelected(fileDialog.files.firstOrNull()?.absolutePath)
     } else {
         onFileSelected(null)
     }
