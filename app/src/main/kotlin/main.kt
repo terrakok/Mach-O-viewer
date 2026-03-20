@@ -24,7 +24,7 @@ fun main(args: Array<String>) {
         val windowState = rememberWindowState(width = 1300.dp, height = 900.dp)
 
         Window(
-            title = "Mach-O viewer ${args.joinToString { it }}",
+            title = "Mach-O viewer",
             state = windowState,
             onCloseRequest = ::exitApplication,
         ) {
