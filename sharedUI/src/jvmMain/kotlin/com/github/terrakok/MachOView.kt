@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -16,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -23,20 +23,38 @@ import androidx.compose.ui.unit.sp
 fun MachOView(machOFile: MachOFile) {
     var selectedBinary by remember { mutableStateOf(machOFile.binaries.first()) }
     var selectedItem by remember(selectedBinary) { mutableStateOf<Any>(selectedBinary.header) }
+    var showBinaryPopup by remember { mutableStateOf(false) }
+
+    DropdownMenu(
+        expanded = showBinaryPopup,
+        onDismissRequest = { showBinaryPopup = false },
+        offset = DpOffset(100.dp, 80.dp),
+    ) {
+        machOFile.binaries.forEach { bin ->
+            DropdownMenuItem(
+                text = { Text(bin.architecture) },
+                onClick = {
+                    selectedBinary = bin
+                    showBinaryPopup = false
+                }
+            )
+        }
+    }
 
     Row(modifier = Modifier.fillMaxSize()) {
         // Sidebar
-        Column(
+        Box(
             modifier = Modifier
                 .width(300.dp)
                 .fillMaxHeight()
                 .background(MaterialTheme.colorScheme.surfaceContainer)
         ) {
             Tree(
+                machOFile = machOFile,
                 binary = selectedBinary,
                 selectedItem = selectedItem,
                 onBinaryClick = {
-                    
+                    showBinaryPopup = true
                 }
             ) { selectedItem = it }
         }
@@ -58,6 +76,7 @@ fun MachOView(machOFile: MachOFile) {
 
 @Composable
 fun Tree(
+    machOFile: MachOFile,
     binary: MachOBinary,
     selectedItem: Any?,
     onBinaryClick: () -> Unit,
@@ -67,12 +86,27 @@ fun Tree(
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            TreeItem(
-                text = "Executable (${binary.header.cputype})",
-                isSelected = false,
-                indent = 16.dp,
-                onClick = { onBinaryClick() }
-            )
+            val fewBinaries = machOFile.binaries.size > 1
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clickable(enabled = fewBinaries) { onBinaryClick() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "Executable (${binary.architecture})",
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+                if (fewBinaries) {
+                    Icon(
+                        imageVector = AppIcons.Edit,
+                        contentDescription = "Select architecture",
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
         }
         item {
             TreeItem(

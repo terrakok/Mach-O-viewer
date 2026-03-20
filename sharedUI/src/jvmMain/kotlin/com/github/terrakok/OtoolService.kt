@@ -1,10 +1,14 @@
 package com.github.terrakok
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class MachOFile(
     val path: String,
     val binaries: List<MachOBinary>
 )
 
+@Immutable
 data class MachOBinary(
     val path: String,
     val header: MachHeader,
@@ -171,7 +175,7 @@ class OtoolService(
 ) {
     suspend fun load(path: String): MachOFile {
         val fatHeader = otool.getFatHeaders(path, verbose = true)
-        val archs = parseArchitectures(fatHeader)
+        val archs = parseArchitectures(fatHeader).takeIf { it.isNotEmpty() } ?: listOf(null)
 
         val bins = archs.map { arch ->
             val commandsContent = otool.getLoadCommands(path, arch = arch, verbose = true)
@@ -196,7 +200,7 @@ class OtoolService(
             val headerContent = otool.getMachHeader(path, arch = arch, verbose = true)
             val header = parseMachHeader(headerContent) ?: error("Failed to parse Mach-O header")
 
-            MachOBinary(displayPath, header, loadCommands, arch)
+            MachOBinary(displayPath, header, loadCommands, header.cputype)
         }
 
         return MachOFile(path, bins)
