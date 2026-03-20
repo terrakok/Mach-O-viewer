@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -70,8 +71,87 @@ fun MachOView(machOFile: MachOFile) {
                 .fillMaxHeight()
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            TableHeader()
-            TableContent(selectedItem, machOFile.content)
+            Box(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    TableHeader()
+                    TableContent(selectedItem, machOFile.content)
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            Box(modifier = Modifier.weight(1f)) {
+                HexViewer(machOFile.content)
+            }
+        }
+    }
+}
+
+@Composable
+fun HexViewer(content: ByteArray) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text(
+            text = "File Hex Viewer",
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(8.dp)
+        )
+        HorizontalDivider()
+        SelectionContainer {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
+            ) {
+                val bytesPerLine = 16
+                val lineCount = (content.size + bytesPerLine - 1) / bytesPerLine
+                items(lineCount) { lineIndex ->
+                    val start = lineIndex * bytesPerLine
+                    val end = (start + bytesPerLine).coerceAtMost(content.size)
+
+                    Row(modifier = Modifier.padding(horizontal = 8.dp)) {
+                        // Address
+                        Text(
+                            text = "%08X".format(start),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.width(80.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(24.dp))
+
+                        // Hex (Raw data)
+                        val hexStringBuilder = StringBuilder()
+                        for (i in start until end) {
+                            hexStringBuilder.append("%02X ".format(content[i].toInt() and 0xFF))
+                        }
+                        Text(
+                            text = hexStringBuilder.toString().padEnd(bytesPerLine * 3),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            modifier = Modifier.width(380.dp)
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        // ASCII (Hex viewer representation)
+                        val asciiStringBuilder = StringBuilder()
+                        for (i in start until end) {
+                            val c = content[i].toInt() and 0xFF
+                            if (c in 32..126) {
+                                asciiStringBuilder.append(c.toChar())
+                            } else {
+                                asciiStringBuilder.append(".")
+                            }
+                        }
+                        Text(
+                            text = asciiStringBuilder.toString(),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
         }
     }
 }
