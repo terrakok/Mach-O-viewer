@@ -2,8 +2,14 @@ package com.github.terrakok
 
 data class MachOFile(
     val path: String,
+    val binaries: List<MachOBinary>
+)
+
+data class MachOBinary(
+    val path: String,
     val header: MachHeader,
-    val loadCommands: List<LoadCommand>
+    val loadCommands: List<LoadCommand>,
+    val architecture: String
 )
 
 data class MachHeader(
@@ -164,29 +170,49 @@ class OtoolService(
     private val otool: Otool
 ) {
     suspend fun load(path: String): MachOFile {
-        val commandsContent = otool.getLoadCommands(path, verbose = true)
-        val lines = commandsContent.lines().filter { it.isNotBlank() }
-        if (lines.isEmpty()) error("Empty commands content")
+        val fatHeader = otool.getFatHeaders(path, verbose = true)
+        val archs = parseArchitectures(fatHeader)
 
-        val path = lines[0].removeSuffix(":")
-        val loadCommands = mutableListOf<LoadCommand>()
+        val bins = archs.map { arch ->
+            val commandsContent = otool.getLoadCommands(path, arch = arch, verbose = true)
+            val lines = commandsContent.lines().filter { it.isNotBlank() }
+            if (lines.isEmpty()) error("Empty commands content")
 
-        var i = 1
-        while (i < lines.size) {
-            val line = lines[i].trim()
-            if (line.startsWith("Load command") || line.startsWith("Load command:", ignoreCase = true)) {
-                val (command, nextIndex) = parseLoadCommand(lines, i)
-                loadCommands.add(command)
-                i = nextIndex
-            } else {
-                i++
+            val displayPath = lines[0].removeSuffix(":")
+            val loadCommands = mutableListOf<LoadCommand>()
+
+            var i = 1
+            while (i < lines.size) {
+                val line = lines[i].trim()
+                if (line.startsWith("Load command") || line.startsWith("Load command:", ignoreCase = true)) {
+                    val (command, nextIndex) = parseLoadCommand(lines, i)
+                    loadCommands.add(command)
+                    i = nextIndex
+                } else {
+                    i++
+                }
             }
+
+            val headerContent = otool.getMachHeader(path, arch = arch, verbose = true)
+            val header = parseMachHeader(headerContent) ?: error("Failed to parse Mach-O header")
+
+            MachOBinary(displayPath, header, loadCommands, arch)
         }
 
-        val headerContent = otool.getMachHeader(path, verbose = true)
-        val header = parseMachHeader(headerContent) ?: error("Failed to parse Mach-O header")
+        return MachOFile(path, bins)
+    }
 
-        return MachOFile(path, header, loadCommands)
+    private fun parseArchitectures(fatHeader: String): List<String> {
+        val lines = fatHeader.lines().filter { it.isNotBlank() }
+        if (lines.isEmpty()) return emptyList()
+        
+        val archs = mutableListOf<String>()
+        lines.forEach { line ->
+            if (line.trim().startsWith("architecture ")) {
+                archs.add(line.trim().substringAfter("architecture ").trim())
+            }
+        }
+        return archs
     }
 
     private fun parseMachHeader(content: String): MachHeader? {

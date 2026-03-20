@@ -15,12 +15,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
 fun MachOView(machOFile: MachOFile) {
-    var selectedItem by remember { mutableStateOf<Any>(machOFile.header) }
+    var selectedBinary by remember { mutableStateOf(machOFile.binaries.first()) }
+    var selectedItem by remember(selectedBinary) { mutableStateOf<Any>(selectedBinary.header) }
 
     Row(modifier = Modifier.fillMaxSize()) {
         // Sidebar
@@ -30,7 +32,13 @@ fun MachOView(machOFile: MachOFile) {
                 .fillMaxHeight()
                 .background(MaterialTheme.colorScheme.surfaceContainer)
         ) {
-            Tree(machOFile, selectedItem) { selectedItem = it }
+            Tree(
+                binary = selectedBinary,
+                selectedItem = selectedItem,
+                onBinaryClick = {
+                    
+                }
+            ) { selectedItem = it }
         }
 
         VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -50,27 +58,28 @@ fun MachOView(machOFile: MachOFile) {
 
 @Composable
 fun Tree(
-    machOFile: MachOFile,
+    binary: MachOBinary,
     selectedItem: Any?,
+    onBinaryClick: () -> Unit,
     onItemSelected: (Any) -> Unit
 ) {
     var loadCommandsExpanded by remember { mutableStateOf(true) }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            Text(
-                text = "Executable (${machOFile.header.cputype})",
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            TreeItem(
+                text = "Executable (${binary.header.cputype})",
+                isSelected = false,
+                indent = 16.dp,
+                onClick = { onBinaryClick() }
             )
         }
         item {
             TreeItem(
                 text = "Mach Header",
-                isSelected = selectedItem == machOFile.header,
+                isSelected = selectedItem == binary.header,
                 indent = 16.dp,
-                onClick = { onItemSelected(machOFile.header) }
+                onClick = { onItemSelected(binary.header) }
             )
         }
         item {
@@ -85,7 +94,7 @@ fun Tree(
             )
         }
         if (loadCommandsExpanded) {
-            machOFile.loadCommands.forEach { command ->
+            binary.loadCommands.forEach { command ->
                 item {
                     var expanded by remember { mutableStateOf(false) }
                     val hasSections = command is SegmentCommand && command.sections.isNotEmpty()
@@ -122,7 +131,7 @@ fun Tree(
 fun TreeItem(
     text: String,
     isSelected: Boolean,
-    indent: androidx.compose.ui.unit.Dp = 0.dp,
+    indent: Dp = 0.dp,
     isExpandable: Boolean = false,
     isExpanded: Boolean = false,
     onExpandClick: () -> Unit = {},

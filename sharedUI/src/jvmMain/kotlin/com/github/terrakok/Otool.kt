@@ -50,9 +50,16 @@ class Otool {
      * Corresponds to the -f flag.
      *
      * @param path The path to the Mach-O file.
+     * @param verbose If true, display the fat header verbosely (symbolically). Corresponds to -v.
      * @return The output of the otool command.
      */
-    suspend fun getFatHeaders(path: String): String = execute("-f", path)
+    suspend fun getFatHeaders(path: String, verbose: Boolean = false): String {
+        val args = mutableListOf<String>()
+        args.add("-f")
+        if (verbose) args.add("-v")
+        args.add(path)
+        return execute(*args.toTypedArray())
+    }
 
     /**
      * Display the archive header.
