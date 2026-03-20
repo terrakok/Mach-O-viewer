@@ -1,9 +1,15 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.compose.desktop.application.dsl.*
 
 plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.jvm)
+}
+
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-Xexplicit-backing-fields")
+    }
 }
 
 dependencies {
@@ -29,7 +35,25 @@ compose.desktop {
 
             macOS {
                 iconFile.set(project.file("appIcons/MacosIcon.icns"))
-                bundleID = "com.github.terrakok.desktopApp"
+                bundleID = "com.github.terrakok.machoviewer"
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>CFBundleDocumentTypes</key>
+                        <array>
+                            <dict>
+                                <key>CFBundleTypeName</key>
+                                <string>All Files</string>
+                                <key>CFBundleTypeRole</key>
+                                <string>Viewer</string>
+                                <key>LSItemContentTypes</key>
+                                <array>
+                                    <string>public.data</string>
+                                    <string>public.content</string>
+                                </array>
+                            </dict>
+                        </array>
+                """.trimIndent()
+                }
             }
         }
     }

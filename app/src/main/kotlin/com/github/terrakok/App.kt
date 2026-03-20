@@ -14,10 +14,23 @@ import kotlinx.coroutines.launch
 @Composable
 fun App() = AppTheme {
     var machOFile: MachOFile? by remember { mutableStateOf(null) }
-    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val fileService = remember { FileService() }
     val otoolService = remember { OtoolService(Otool()) }
+
+    LaunchedEffect(Unit) {
+        FileInbox.files.collect { path ->
+            if (fileService.isMachO(path)) {
+                try {
+                    machOFile = otoolService.load(path)
+                } catch (e: Exception) {
+                    snackbarHostState.showSnackbar("Failed to parse file: ${e.message}")
+                }
+            } else {
+                snackbarHostState.showSnackbar("File is not a Mach-O file")
+            }
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -69,21 +82,7 @@ fun App() = AppTheme {
             contentAlignment = Alignment.Center
         ) {
             if (machOFile == null) {
-                FileDropScreen(
-                    onFileDropped = { droppedPath ->
-                        scope.launch {
-                            if (fileService.isMachO(droppedPath)) {
-                                try {
-                                    machOFile = otoolService.load(droppedPath)
-                                } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar("Failed to parse file: ${e.message}")
-                                }
-                            } else {
-                                snackbarHostState.showSnackbar("File is not a Mach-O file")
-                            }
-                        }
-                    }
-                )
+                FileDropScreen { FileInbox.send(it) }
             } else {
                 MachOView(machOFile!!)
             }
