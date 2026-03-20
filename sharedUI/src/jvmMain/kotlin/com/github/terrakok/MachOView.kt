@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -223,20 +225,22 @@ fun TableHeader() {
 @Composable
 fun TableContent(selectedItem: Any?, content: ByteArray) {
     val data = getTableData(selectedItem, content)
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        itemsIndexed(data) { index, row ->
-            val backgroundColor =
-                if (index % 2 == 0) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(backgroundColor)
-                    .padding(vertical = 2.dp)
-            ) {
-                TableCell(row.address, Modifier.width(100.dp))
-                TableCell(row.data, Modifier.width(150.dp))
-                TableCell(row.description, Modifier.width(250.dp))
-                TableCell(row.value, Modifier.weight(1f))
+    SelectionContainer {
+        LazyColumn {
+            itemsIndexed(data) { index, row ->
+                val backgroundColor =
+                    if (index % 2 == 0) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(backgroundColor)
+                        .padding(vertical = 2.dp),
+                ) {
+                    TableCell(row.address, Modifier.width(100.dp))
+                    TableCell(row.data, Modifier.width(150.dp))
+                    TableCell(row.description, Modifier.width(250.dp))
+                    TableCell(row.value, Modifier.weight(1f))
+                }
             }
         }
     }
@@ -257,7 +261,8 @@ fun RowScope.TableCell(
             fontSize = 12.sp,
             fontWeight = fontWeight
         ),
-        maxLines = 1
+        maxLines = 1,
+        overflow = TextOverflow.MiddleEllipsis
     )
 }
 
