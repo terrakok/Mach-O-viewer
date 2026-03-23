@@ -1,4 +1,4 @@
-import org.jetbrains.compose.desktop.application.dsl.*
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     alias(libs.plugins.compose.compiler)
@@ -16,12 +16,12 @@ dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
-    implementation(libs.compose.resources)
-    implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.compose.material3)
-    implementation(libs.kotlinx.coroutines.core)
-    implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutines.swing)
+    implementation(libs.jewelStandalone)
+    implementation(libs.jewelWindow)
+    implementation(compose.desktop.currentOs) {
+        exclude(group = "org.jetbrains.compose.material")
+    }
 }
 
 compose.desktop {

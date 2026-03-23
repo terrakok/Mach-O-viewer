@@ -1,20 +1,23 @@
 package com.github.terrakok
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.github.terrakok.theme.AppTheme
-import kotlinx.coroutines.launch
+import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.component.Icon
+import org.jetbrains.jewel.ui.component.IconButton
+import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.window.DecoratedWindowScope
+import org.jetbrains.jewel.window.TitleBar
 
 @Composable
-fun App() = AppTheme {
+fun DecoratedWindowScope.App() {
     var machOFile: MachOFile? by remember { mutableStateOf(null) }
-    val snackbarHostState = remember { SnackbarHostState() }
     val fileService = remember { FileService() }
     val otoolService = remember { OtoolService(Otool()) }
 
@@ -24,67 +27,55 @@ fun App() = AppTheme {
                 try {
                     machOFile = otoolService.load(path)
                 } catch (e: Exception) {
-                    snackbarHostState.showSnackbar("Failed to parse file: ${e.message}")
+                    // TODO: show error in Jewel way
                 }
             } else {
-                snackbarHostState.showSnackbar("File is not a Mach-O file")
+                // TODO: show error in Jewel way
             }
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        topBar = {
-            if (machOFile != null) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 8.dp
-                ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .padding(horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                modifier = Modifier.padding(horizontal = 8.dp),
-                                text = "File: ",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                            )
-                            Text(
-                                text = machOFile?.path ?: "",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            IconButton(
-                                onClick = { machOFile = null },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = AppIcons.Close,
-                                    contentDescription = "Close file",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                        HorizontalDivider()
+    Column(modifier = Modifier.fillMaxSize().background(JewelTheme.globalColors.paneBackground)) {
+        TitleBar {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Mach-O viewer",
+                    fontWeight = FontWeight.Bold,
+                )
+                if (machOFile != null) {
+                    Text(
+                        text = " - [ ${machOFile?.path} ]",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    IconButton(
+                        onClick = { machOFile = null },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = AppIcons.Close,
+                            contentDescription = "Close file",
+                            modifier = Modifier.size(18.dp),
+                            tint = JewelTheme.contentColor
+                        )
                     }
                 }
             }
         }
-    ) { paddingValues ->
+
         Box(
-            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            modifier = Modifier.fillMaxSize().weight(1f),
             contentAlignment = Alignment.Center
         ) {
-            if (machOFile == null) {
-                FileDropScreen { FileInbox.send(it) }
-            } else {
+
+            if (machOFile != null) {
                 MachOView(machOFile!!)
+            } else {
+                FileDropScreen { FileInbox.send(it) }
             }
         }
     }

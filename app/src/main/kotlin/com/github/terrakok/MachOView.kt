@@ -1,50 +1,41 @@
 package com.github.terrakok
 
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.Orientation
+import org.jetbrains.jewel.ui.component.*
 
 @Composable
 fun MachOView(machOFile: MachOFile) {
     var selectedBinary by remember { mutableStateOf(machOFile.binaries.first()) }
     var selectedItem by remember(selectedBinary) { mutableStateOf<Any>(selectedBinary.header) }
-    var showBinaryPopup by remember { mutableStateOf(false) }
     var highlightedOffset by remember { mutableStateOf<Long?>(null) }
     var highlightedSize by remember { mutableStateOf(0L) }
-
-    DropdownMenu(
-        expanded = showBinaryPopup,
-        onDismissRequest = { showBinaryPopup = false },
-        offset = DpOffset(100.dp, 80.dp),
-    ) {
-        machOFile.binaries.forEach { bin ->
-            DropdownMenuItem(
-                text = { Text(bin.architecture) },
-                onClick = {
-                    selectedBinary = bin
-                    showBinaryPopup = false
-                }
-            )
-        }
-    }
 
     Row(modifier = Modifier.fillMaxSize()) {
         // Sidebar
@@ -52,15 +43,13 @@ fun MachOView(machOFile: MachOFile) {
             modifier = Modifier
                 .width(300.dp)
                 .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .background(JewelTheme.globalColors.paneBackground)
         ) {
             Tree(
                 machOFile = machOFile,
                 binary = selectedBinary,
                 selectedItem = selectedItem,
-                onBinaryClick = {
-                    showBinaryPopup = true
-                }
+                onBinarySelected = { selectedBinary = it }
             ) { item ->
                 if (item is LoadCommand) {
                     highlightedOffset = item.offset
@@ -72,15 +61,14 @@ fun MachOView(machOFile: MachOFile) {
                 selectedItem = item
             }
         }
-
-        VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Divider(orientation = Orientation.Vertical)
 
         // Main content
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.background)
+                .background(JewelTheme.globalColors.paneBackground)
         ) {
             Box(modifier = Modifier.weight(1f)) {
                 Column(modifier = Modifier.fillMaxSize()) {
@@ -92,7 +80,7 @@ fun MachOView(machOFile: MachOFile) {
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Divider(orientation = Orientation.Horizontal)
 
             Box(modifier = Modifier.weight(1f)) {
                 HexViewer(machOFile.content, highlightedOffset, highlightedSize)
@@ -116,107 +104,113 @@ fun HexViewer(content: ByteArray, highlightedOffset: Long?, highlightedSize: Lon
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = "File Hex Viewer",
-            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(8.dp)
         )
-        HorizontalDivider()
-        LazyColumn(
-            state = scrollState,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
-        ) {
-            val lineCount = (content.size + bytesPerLine - 1) / bytesPerLine
-            items(lineCount) { lineIndex ->
-                val start = lineIndex * bytesPerLine
-                val end = (start + bytesPerLine).coerceAtMost(content.size)
+        Divider(orientation = Orientation.Horizontal)
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = scrollState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(JewelTheme.globalColors.paneBackground)
+            ) {
+                val lineCount = (content.size + bytesPerLine - 1) / bytesPerLine
+                items(lineCount) { lineIndex ->
+                    val start = lineIndex * bytesPerLine
+                    val end = (start + bytesPerLine).coerceAtMost(content.size)
 
-                Row(modifier = Modifier.padding(horizontal = 8.dp)) {
-                    // Address
-                    Text(
-                        text = "%08X".format(start),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.width(80.dp)
-                    )
+                    Row(modifier = Modifier.padding(horizontal = 8.dp)) {
+                        // Address
+                        Text(
+                            text = "%08X".format(start),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = Color.Gray,
+                            modifier = Modifier.width(80.dp)
+                        )
 
-                    Spacer(modifier = Modifier.width(24.dp))
+                        Spacer(modifier = Modifier.width(24.dp))
 
-                    // Hex (Raw data)
-                    Row(modifier = Modifier.width(380.dp)) {
-                        for (i in start until start + bytesPerLine) {
-                            val isHighlighted = highlightedOffset != null &&
-                                    i >= highlightedOffset &&
-                                    i < highlightedOffset + highlightedSize.coerceAtLeast(bytesPerLine.toLong())
-                            val color = if (isHighlighted) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            }
-                            val background = if (isHighlighted) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                Color.Transparent
-                            }
+                        // Hex (Raw data)
+                        Row(modifier = Modifier.width(380.dp)) {
+                            for (i in start until start + bytesPerLine) {
+                                val isHighlighted = highlightedOffset != null &&
+                                        i >= highlightedOffset &&
+                                        i < highlightedOffset + highlightedSize.coerceAtLeast(bytesPerLine.toLong())
+                                val color = if (isHighlighted) {
+                                    JewelTheme.globalColors.outlines.focused
+                                } else {
+                                    JewelTheme.defaultTextStyle.color
+                                }
+                                val background = if (isHighlighted) {
+                                    JewelTheme.globalColors.outlines.focused.copy(alpha = 0.2f)
+                                } else {
+                                    Color.Transparent
+                                }
 
-                            if (i < end) {
-                                Text(
-                                    text = "%02X ".format(content[i].toInt() and 0xFF),
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                    color = color,
-                                    modifier = Modifier.background(background)
-                                )
-                            } else {
-                                Text(
-                                    text = "   ",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                )
+                                if (i < end) {
+                                    Text(
+                                        text = "%02X ".format(content[i].toInt() and 0xFF),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        color = color,
+                                        modifier = Modifier.background(background)
+                                    )
+                                } else {
+                                    Text(
+                                        text = "   ",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.weight(1f))
+                        Spacer(modifier = Modifier.weight(1f))
 
-                    // ASCII (Hex viewer representation)
-                    Row {
-                        for (i in start until start + bytesPerLine) {
-                            val isHighlighted = highlightedOffset != null &&
-                                    i >= highlightedOffset && i < highlightedOffset + highlightedSize
-                            val color = if (isHighlighted) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            }
-                            val background = if (isHighlighted) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                Color.Transparent
-                            }
+                        // ASCII (Hex viewer representation)
+                        Row {
+                            for (i in start until start + bytesPerLine) {
+                                val isHighlighted = highlightedOffset != null &&
+                                        i >= highlightedOffset && i < highlightedOffset + highlightedSize
+                                val color = if (isHighlighted) {
+                                    JewelTheme.globalColors.outlines.focused
+                                } else {
+                                    JewelTheme.defaultTextStyle.color
+                                }
+                                val background = if (isHighlighted) {
+                                    JewelTheme.globalColors.outlines.focused.copy(alpha = 0.2f)
+                                } else {
+                                    Color.Transparent
+                                }
 
-                            if (i < end) {
-                                val c = content[i].toInt() and 0xFF
-                                val char = if (c in 32..126) c.toChar().toString() else "."
-                                Text(
-                                    text = char,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                    color = color,
-                                    modifier = Modifier.background(background)
-                                )
-                            } else {
-                                Text(
-                                    text = " ",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                )
+                                if (i < end) {
+                                    val c = content[i].toInt() and 0xFF
+                                    val char = if (c in 32..126) c.toChar().toString() else "."
+                                    Text(
+                                        text = char,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        color = color,
+                                        modifier = Modifier.background(background)
+                                    )
+                                } else {
+                                    Text(
+                                        text = " ",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
+            VerticalScrollbar(
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                adapter = rememberScrollbarAdapter(scrollState)
+            )
         }
     }
 }
@@ -226,85 +220,127 @@ fun Tree(
     machOFile: MachOFile,
     binary: MachOBinary,
     selectedItem: Any?,
-    onBinaryClick: () -> Unit,
+    onBinarySelected: (MachOBinary) -> Unit,
     onItemSelected: (Any) -> Unit
 ) {
     var loadCommandsExpanded by remember { mutableStateOf(true) }
+    val scrollState = rememberLazyListState()
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item {
-            val fewBinaries = machOFile.binaries.size > 1
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clickable(enabled = fewBinaries) { onBinaryClick() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "Executable (${binary.architecture})",
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f)
-                )
-                if (fewBinaries) {
-                    Icon(
-                        imageVector = AppIcons.Edit,
-                        contentDescription = "Select architecture",
-                        modifier = Modifier.size(16.dp)
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = scrollState,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            item {
+                val fewBinaries = machOFile.binaries.size > 1
+                val interactionSource = remember { MutableInteractionSource() }
+                val isHovered by interactionSource.collectIsHoveredAsState()
+                val backgroundColor =
+                    if (isHovered && fewBinaries) JewelTheme.globalColors.outlines.focused.copy(alpha = 0.1f) else Color.Transparent
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(backgroundColor)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Executable (${binary.architecture})",
+                        style = JewelTheme.defaultTextStyle,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f)
                     )
+
+                    if (fewBinaries) {
+                        var showBinariesMenu by remember { mutableStateOf(false) }
+                        IconButton(
+                            modifier = Modifier.size(24.dp),
+                            onClick = { showBinariesMenu = true }
+                        ) {
+                            Icon(
+                                imageVector = AppIcons.Edit,
+                                contentDescription = "Select architecture",
+                                tint = JewelTheme.contentColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            if (showBinariesMenu) {
+                                PopupMenu(
+                                    onDismissRequest = {
+                                        showBinariesMenu = false
+                                        true
+                                    },
+                                    horizontalAlignment = Alignment.Start,
+                                    content = {
+                                        items(
+                                            items = machOFile.binaries,
+                                            isSelected = { it == binary },
+                                            onItemClick = { onBinarySelected(it) },
+                                            content = { Text(it.architecture) }
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
-        }
-        item {
-            TreeItem(
-                text = "Mach Header",
-                isSelected = selectedItem == binary.header,
-                indent = 16.dp,
-                onClick = { onItemSelected(binary.header) }
-            )
-        }
-        item {
-            TreeItem(
-                text = "Load Commands",
-                isSelected = false,
-                indent = 16.dp,
-                isExpandable = true,
-                isExpanded = loadCommandsExpanded,
-                onExpandClick = { loadCommandsExpanded = !loadCommandsExpanded },
-                onClick = { loadCommandsExpanded = !loadCommandsExpanded }
-            )
-        }
-        if (loadCommandsExpanded) {
-            binary.loadCommands.forEach { command ->
-                item {
-                    var expanded by remember { mutableStateOf(false) }
-                    val hasSections = command is SegmentCommand && command.sections.isNotEmpty()
 
-                    TreeItem(
-                        text = command.displayName,
-                        isSelected = selectedItem == command,
-                        indent = 32.dp,
-                        isExpandable = hasSections,
-                        isExpanded = expanded,
-                        onExpandClick = { expanded = !expanded },
-                        onClick = {
-                            onItemSelected(command)
-                        }
-                    )
+            item {
+                TreeItem(
+                    text = "Mach Header",
+                    isSelected = selectedItem == binary.header,
+                    indent = 16.dp,
+                    onClick = { onItemSelected(binary.header) }
+                )
+            }
+            item {
+                TreeItem(
+                    text = "Load Commands",
+                    isSelected = false,
+                    indent = 16.dp,
+                    isExpandable = true,
+                    isExpanded = loadCommandsExpanded,
+                    onExpandClick = { loadCommandsExpanded = !loadCommandsExpanded },
+                    onClick = { loadCommandsExpanded = !loadCommandsExpanded }
+                )
+            }
+            if (loadCommandsExpanded) {
+                binary.loadCommands.forEach { command ->
+                    item {
+                        var expanded by remember { mutableStateOf(false) }
+                        val hasSections = command is SegmentCommand && command.sections.isNotEmpty()
 
-                    if (expanded && command is SegmentCommand) {
-                        command.sections.forEach { section ->
-                            TreeItem(
-                                text = "    ${section.sectname}",
-                                isSelected = selectedItem == section,
-                                indent = 48.dp,
-                                onClick = { onItemSelected(section) }
-                            )
+                        TreeItem(
+                            text = command.displayName,
+                            isSelected = selectedItem == command,
+                            indent = 32.dp,
+                            isExpandable = hasSections,
+                            isExpanded = expanded,
+                            onExpandClick = { expanded = !expanded },
+                            onClick = {
+                                onItemSelected(command)
+                            }
+                        )
+
+                        if (expanded && command is SegmentCommand) {
+                            command.sections.forEach { section ->
+                                TreeItem(
+                                    text = "    ${section.sectname}",
+                                    isSelected = selectedItem == section,
+                                    indent = 48.dp,
+                                    onClick = { onItemSelected(section) }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+        VerticalScrollbar(
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+            adapter = rememberScrollbarAdapter(scrollState)
+        )
     }
 }
 
@@ -318,15 +354,25 @@ fun TreeItem(
     onExpandClick: () -> Unit = {},
     onClick: () -> Unit
 ) {
-    val backgroundColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
-    val textColor =
-        if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val backgroundColor = when {
+        isSelected -> JewelTheme.globalColors.outlines.focused.copy(alpha = 0.2f)
+        isHovered -> JewelTheme.globalColors.outlines.focused.copy(alpha = 0.1f)
+        else -> Color.Transparent
+    }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(backgroundColor)
-            .clickable(onClick = onClick)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .clickable(
+                onClick = onClick,
+                indication = LocalIndication.current,
+                interactionSource = interactionSource
+            )
             .padding(start = indent, top = 4.dp, bottom = 4.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -334,19 +380,21 @@ fun TreeItem(
             Icon(
                 imageVector = if (isExpanded) AppIcons.RadixTriangleDown else AppIcons.RadixTriangleRight,
                 contentDescription = "Expand/collapse",
-                tint = textColor,
+                tint = JewelTheme.contentColor,
                 modifier = Modifier
                     .size(20.dp)
                     .clip(RoundedCornerShape(50))
-                    .clickable { onExpandClick() }
+                    .clickable(
+                        onClick = onExpandClick,
+                        indication = LocalIndication.current,
+                        interactionSource = remember { MutableInteractionSource() }
+                    )
             )
         } else {
             Spacer(modifier = Modifier.size(20.dp))
         }
         Text(
             text = text,
-            color = textColor,
-            style = MaterialTheme.typography.bodyMedium,
             maxLines = 1
         )
     }
@@ -357,7 +405,7 @@ fun TableHeader() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(JewelTheme.globalColors.outlines.focused.copy(alpha = 0.2f))
             .padding(vertical = 4.dp)
     ) {
         TableCell("Address", Modifier.width(100.dp), fontWeight = FontWeight.Bold)
@@ -374,36 +422,61 @@ fun TableContent(
     onAddressClick: (DataDestination) -> Unit
 ) {
     val data = getTableData(selectedItem, content)
-    LazyColumn {
-        itemsIndexed(data) { index, row ->
-            val backgroundColor =
-                if (index % 2 == 0) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(backgroundColor)
-                    .clickable(row.destination != null) {
+    val scrollState = rememberLazyListState()
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(state = scrollState) {
+            itemsIndexed(data) { index, row ->
+                val interactionSource = remember { MutableInteractionSource() }
+                val isHovered by interactionSource.collectIsHoveredAsState()
+                val isClickable = row.destination != null
+
+                val baseBackgroundColor =
+                    if (index % 2 == 0) Color.Transparent else JewelTheme.globalColors.paneBackground.copy(alpha = 0.5f)
+                val backgroundColor = if (isHovered && isClickable) {
+                    JewelTheme.globalColors.outlines.focused.copy(alpha = 0.1f)
+                } else {
+                    baseBackgroundColor
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(backgroundColor)
+                        .pointerHoverIcon(if (isClickable) PointerIcon.Hand else PointerIcon.Default)
+                        .clickable(
+                            enabled = isClickable,
+                            onClick = {
+                                if (row.destination != null) {
+                                    onAddressClick(row.destination)
+                                }
+                            },
+                            indication = LocalIndication.current,
+                            interactionSource = interactionSource
+                        )
+                        .padding(vertical = 2.dp),
+                ) {
+                    TableCell(row.address, Modifier.width(100.dp))
+                    TableCell(row.data, Modifier.width(150.dp))
+                    Row(Modifier.width(250.dp)) {
+                        TableCell(row.description, Modifier.weight(1f))
                         if (row.destination != null) {
-                            onAddressClick(row.destination)
+                            Icon(
+                                AppIcons.ArrowBadgeLeft,
+                                contentDescription = "Go to address",
+                                modifier = Modifier.size(16.dp).rotate(180f),
+                                tint = JewelTheme.contentColor
+                            )
                         }
                     }
-                    .padding(vertical = 2.dp),
-            ) {
-                TableCell(row.address, Modifier.width(100.dp))
-                TableCell(row.data, Modifier.width(150.dp))
-                Row(Modifier.width(250.dp)) {
-                    TableCell(row.description, Modifier.weight(1f))
-                    if (row.destination != null) {
-                        Icon(
-                            AppIcons.ArrowBadgeLeft,
-                            contentDescription = "Go to address",
-                            modifier = Modifier.size(16.dp).rotate(180f)
-                        )
-                    }
+                    TableCell(row.value, Modifier.weight(1f))
                 }
-                TableCell(row.value, Modifier.weight(1f))
             }
         }
+        VerticalScrollbar(
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+            adapter = rememberScrollbarAdapter(scrollState)
+        )
     }
 }
 
@@ -412,19 +485,18 @@ fun RowScope.TableCell(
     text: String,
     modifier: Modifier = Modifier,
     fontWeight: FontWeight = FontWeight.Normal,
-    color: Color = MaterialTheme.colorScheme.onSurface
+    color: Color = Color.Unspecified
 ) {
+    val textColor = if (color == Color.Unspecified) JewelTheme.defaultTextStyle.color else color
     Text(
         text = text,
         modifier = modifier.padding(horizontal = 8.dp),
-        color = color,
-        style = MaterialTheme.typography.bodySmall.copy(
-            fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-            fontWeight = fontWeight
-        ),
+        color = textColor,
+        fontFamily = FontFamily.Monospace,
+        fontSize = 12.sp,
+        fontWeight = fontWeight,
         maxLines = 1,
-        overflow = TextOverflow.MiddleEllipsis
+        overflow = TextOverflow.Ellipsis
     )
 }
 

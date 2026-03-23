@@ -1,13 +1,19 @@
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.github.terrakok.App
 import com.github.terrakok.FileInbox
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.launch
+import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
+import org.jetbrains.jewel.intui.standalone.theme.darkThemeDefinition
+import org.jetbrains.jewel.intui.standalone.theme.default
+import org.jetbrains.jewel.intui.standalone.theme.lightThemeDefinition
+import org.jetbrains.jewel.intui.window.decoratedWindow
+import org.jetbrains.jewel.intui.window.styling.dark
+import org.jetbrains.jewel.ui.ComponentStyling
+import org.jetbrains.jewel.window.DecoratedWindow
+import org.jetbrains.jewel.window.styling.TitleBarStyle
 import java.awt.Desktop
 import java.awt.Dimension
 
@@ -21,16 +27,24 @@ fun main(args: Array<String>) {
         }
     }
     application {
-        val windowState = rememberWindowState(width = 1300.dp, height = 900.dp)
-
-        Window(
-            title = "Mach-O viewer",
-            state = windowState,
-            onCloseRequest = ::exitApplication,
+        val systemIsDark = isSystemInDarkTheme()
+        val theme = if (systemIsDark) JewelTheme.darkThemeDefinition()
+        else JewelTheme.lightThemeDefinition()
+        IntUiTheme(
+            theme = theme,
+            styling = ComponentStyling.default().decoratedWindow(
+                titleBarStyle = TitleBarStyle.dark()
+            ),
         ) {
-            window.minimumSize = Dimension(1300, 900)
-
-            App()
+            val windowState = rememberWindowState(width = 1300.dp, height = 900.dp)
+            DecoratedWindow(
+                title = "Mach-O viewer",
+                state = windowState,
+                onCloseRequest = ::exitApplication,
+            ) {
+                window.minimumSize = Dimension(1300, 900)
+                App()
+            }
         }
     }
 }
