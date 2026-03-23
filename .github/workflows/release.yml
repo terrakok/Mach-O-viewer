@@ -21,11 +21,11 @@ jobs:
       - name: Set up GraalVM (Liberica NIK)
         uses: graalvm/setup-graalvm@v1
         with:
-          distribution: 'jetbrains'
-          java-version: '21'
+          distribution: 'liberica'
+          java-version: '25'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
