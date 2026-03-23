@@ -18,11 +18,11 @@ Mach-O Viewer is a desktop application for exploring and analyzing Mach-O binary
 
 ### Releases
 1. Download the latest `.dmg` from the [Releases](https://github.com/terrakok/Mach-O-viewer/releases) page.
-2. Open the downloaded `.dmg` and drag the **Mach-O viewer.app** to your Applications folder.
+2. Open the downloaded `.dmg` and drag the **Mach-O viewer.app** to your **Applications** folder.
 3. Since the app is not signed, you may need to run the following command to allow it to run:
-```bash
-xattr -d com.apple.quarantine /Applications/Mach-O\ viewer.app
-```
+   ```bash
+   xattr -d com.apple.quarantine /Applications/Mach-O\ viewer.app
+   ```
 
 ## Development
 To run the desktop application:
