@@ -12,10 +12,18 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.hoverable
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.v2.ScrollbarAdapter
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -207,9 +215,10 @@ fun HexViewer(content: ByteArray, highlightedOffset: Long?, highlightedSize: Lon
                     }
                 }
             }
-            VerticalScrollbar(
-                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-                adapter = rememberScrollbarAdapter(scrollState)
+            AutoHideVerticalScrollbar(
+                adapter = rememberScrollbarAdapter(scrollState),
+                isVisible = scrollState.isScrollInProgress,
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
             )
         }
     }
@@ -337,9 +346,10 @@ fun Tree(
                 }
             }
         }
-        VerticalScrollbar(
-            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-            adapter = rememberScrollbarAdapter(scrollState)
+        AutoHideVerticalScrollbar(
+            adapter = rememberScrollbarAdapter(scrollState),
+            isVisible = scrollState.isScrollInProgress,
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
         )
     }
 }
@@ -971,3 +981,27 @@ val LoadCommand.displayName: String
         is DylinkerCommand -> "$cmd (${name.substringAfterLast("/")})"
         else -> cmd
     }
+
+
+@Composable
+private fun AutoHideVerticalScrollbar(
+    adapter: ScrollbarAdapter,
+    isVisible: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val targetAlpha = if (isHovered || isVisible) 1f else 0f
+    val alpha by animateFloatAsState(
+        targetValue = targetAlpha,
+        label = "autoHideScrollbarAlpha",
+        animationSpec = tween(delayMillis = if (isVisible) 0 else 1000)
+    )
+
+    VerticalScrollbar(
+        adapter = adapter,
+        modifier = modifier
+            .hoverable(interactionSource)
+            .alpha(alpha)
+    )
+}
