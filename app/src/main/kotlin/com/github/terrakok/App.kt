@@ -3,6 +3,7 @@ package com.github.terrakok
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -18,6 +19,7 @@ import org.jetbrains.jewel.window.TitleBar
 @Composable
 fun DecoratedWindowScope.App() {
     var machOFile: MachOFile? by remember { mutableStateOf(null) }
+    val notifications = remember { mutableStateListOf<Notification>() }
     val fileService = remember { FileService() }
     val otoolService = remember { OtoolService(Otool()) }
 
@@ -27,10 +29,10 @@ fun DecoratedWindowScope.App() {
                 try {
                     machOFile = otoolService.load(path)
                 } catch (e: Exception) {
-                    // TODO: show error in Jewel way
+                    notifications.add(Notification("Error loading file: ${e.message}"))
                 }
             } else {
-                // TODO: show error in Jewel way
+                notifications.add(Notification("Not a Mach-O file: $path"))
             }
         }
     }
@@ -77,6 +79,13 @@ fun DecoratedWindowScope.App() {
             } else {
                 FileDropScreen { FileInbox.send(it) }
             }
+
+            NotificationOverlay(
+                notifications = notifications,
+                onDismiss = { notification ->
+                    notifications.remove(notification)
+                }
+            )
         }
     }
 }
