@@ -1,0 +1,108 @@
+{
+    "reflection": [
+        {
+            "type": "com.apple.eawt._AppEventHandler",
+            "jniAccessible": true,
+            "methods": [
+                {
+                    "name": "handleOpenFiles",
+                    "parameterTypes": [
+                        "java.util.List",
+                        "java.lang.String"
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "java.util.ArrayList",
+            "jniAccessible": true,
+            "methods": [
+                {
+                    "name": "<init>",
+                    "parameterTypes": []
+                },
+                {
+                    "name": "add",
+                    "parameterTypes": [
+                        "java.lang.Object"
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "androidx.compose.ui.draganddrop.DragAndDropEvent",
+            "fields": [
+                {
+                    "name": "nativeEvent"
+                }
+            ]
+        },
+        {
+            "type": "sun.awt.dnd.SunDropTargetContextPeer",
+            "jniAccessible": true,
+            "methods": [
+                {
+                    "name": "handleDropMessage",
+                    "parameterTypes": [
+                        "java.awt.Component",
+                        "int",
+                        "int",
+                        "int",
+                        "int",
+                        "long[]",
+                        "long"
+                    ]
+                },
+                {
+                    "name": "handleEnterMessage",
+                    "parameterTypes": [
+                        "java.awt.Component",
+                        "int",
+                        "int",
+                        "int",
+                        "int",
+                        "long[]",
+                        "long"
+                    ]
+                },
+                {
+                    "name": "handleMotionMessage",
+                    "parameterTypes": [
+                        "java.awt.Component",
+                        "int",
+                        "int",
+                        "int",
+                        "int",
+                        "long[]",
+                        "long"
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "sun.lwawt.macosx.CDropTargetContextPeer",
+            "jniAccessible": true,
+            "methods": [
+                {
+                    "name": "getDropTargetContextPeer",
+                    "parameterTypes": [
+                        
+                    ]
+                },
+                {
+                    "name": "newData",
+                    "parameterTypes": [
+                        "long",
+                        "byte[]"
+                    ]
+                }
+            ]
+        }
+    ],
+    "resources": [
+        {
+            "module": "java.datatransfer",
+            "glob": "sun/datatransfer/resources/flavormap.properties"
+        }
+    ]
+}

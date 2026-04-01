@@ -5,6 +5,7 @@ compose-multiplatform = "1.10.3"
 jewel = "0.34.0-253.31033.149"
 kotlinx-coroutines = "1.10.2"
 jna = "5.18.1"
+nucleus = "1.8.8"
 
 [libraries]
 
@@ -12,7 +13,12 @@ compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.re
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose-multiplatform" }
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose-multiplatform" }
 jewelStandalone = { module = "org.jetbrains.jewel:jewel-int-ui-standalone", version.ref = "jewel" }
-jewelWindow = { module = "org.jetbrains.jewel:jewel-int-ui-decorated-window", version.ref = "jewel" }
+nucleus-decorated-window-jewel = { module = "io.github.kdroidfilter:nucleus.decorated-window-jewel", version.ref = "nucleus" }
+nucleus-decorated-window-jni = { module = "io.github.kdroidfilter:nucleus.decorated-window-jni", version.ref = "nucleus" }
+nucleus-core-runtime = { module = "io.github.kdroidfilter:nucleus.core-runtime", version.ref = "nucleus" }
+nucleus-darkmode-detector = { module = "io.github.kdroidfilter:nucleus.darkmode-detector", version.ref = "nucleus" }
+nucleus-system-color = { module = "io.github.kdroidfilter:nucleus.system-color", version.ref = "nucleus" }
+nucleus-graalvm-runtime = { module = "io.github.kdroidfilter:nucleus.graalvm-runtime", version.ref = "nucleus" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 
@@ -21,3 +27,4 @@ jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+nucleus = { id = "io.github.kdroidfilter.nucleus", version.ref = "nucleus" }

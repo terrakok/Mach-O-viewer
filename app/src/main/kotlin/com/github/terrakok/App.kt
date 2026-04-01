@@ -1,20 +1,26 @@
 package com.github.terrakok
 
+import AppTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.kdroidfilter.nucleus.window.DecoratedWindowScope
+import io.github.kdroidfilter.nucleus.window.jewel.JewelTitleBar
+import io.github.kdroidfilter.nucleus.window.macOSLargeCornerRadius
+import io.github.kdroidfilter.nucleus.window.newFullscreenControls
 import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
+import org.jetbrains.jewel.intui.standalone.theme.darkThemeDefinition
+import org.jetbrains.jewel.intui.standalone.theme.default
+import org.jetbrains.jewel.ui.ComponentStyling
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IconButton
 import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.window.DecoratedWindowScope
-import org.jetbrains.jewel.window.TitleBar
 
 @Composable
 fun DecoratedWindowScope.App() {
@@ -38,35 +44,37 @@ fun DecoratedWindowScope.App() {
     }
 
     Column(modifier = Modifier.fillMaxSize().background(JewelTheme.globalColors.panelBackground)) {
-        TitleBar {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "Mach-O viewer",
-                    fontWeight = FontWeight.Bold,
-                )
-                if (machOFile != null) {
+        AppTheme(isDark = true) {
+            JewelTitleBar(modifier = Modifier.macOSLargeCornerRadius().newFullscreenControls()) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
                     Text(
-                        text = " - [ ${machOFile?.path} ]",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = "Mach-O viewer",
+                        fontWeight = FontWeight.Bold,
                     )
-                    IconButton(
-                        onClick = { machOFile = null },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.Close,
-                            contentDescription = "Close file",
-                            modifier = Modifier.size(18.dp),
-                            tint = JewelTheme.contentColor
+                    if (machOFile != null) {
+                        Text(
+                            text = " - [ ${machOFile?.path} ]",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
+                        IconButton(
+                            onClick = { machOFile = null },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = AppIcons.Close,
+                                contentDescription = "Close file",
+                                modifier = Modifier.size(18.dp),
+                                tint = JewelTheme.contentColor
+                            )
+                        }
                     }
+                    Spacer(Modifier.width(80.dp))
                 }
-                Spacer(Modifier.width(80.dp))
             }
         }
 
