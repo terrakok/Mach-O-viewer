@@ -142,7 +142,6 @@ fun HexViewer(content: ByteArray, highlightedOffset: Long?, highlightedSize: Lon
                         Text(
                             text = "%08X".format(start),
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
                             color = Color.Gray,
                             modifier = Modifier.width(80.dp)
                         )
@@ -150,7 +149,7 @@ fun HexViewer(content: ByteArray, highlightedOffset: Long?, highlightedSize: Lon
                         Spacer(modifier = Modifier.width(24.dp))
 
                         // Hex (Raw data)
-                        Row(modifier = Modifier.width(380.dp)) {
+                        Row(modifier = Modifier.weight(1f)) {
                             for (i in start until start + bytesPerLine) {
                                 val isHighlighted = highlightedOffset != null &&
                                         i >= highlightedOffset &&
@@ -170,7 +169,6 @@ fun HexViewer(content: ByteArray, highlightedOffset: Long?, highlightedSize: Lon
                                     Text(
                                         text = "%02X ".format(content[i].toInt() and 0xFF),
                                         fontFamily = FontFamily.Monospace,
-                                        fontSize = 12.sp,
                                         color = color,
                                         modifier = Modifier.background(background)
                                     )
@@ -183,8 +181,6 @@ fun HexViewer(content: ByteArray, highlightedOffset: Long?, highlightedSize: Lon
                                 }
                             }
                         }
-
-                        Spacer(modifier = Modifier.weight(1f))
 
                         // ASCII (Hex viewer representation)
                         Row {
@@ -208,7 +204,6 @@ fun HexViewer(content: ByteArray, highlightedOffset: Long?, highlightedSize: Lon
                                     Text(
                                         text = char,
                                         fontFamily = FontFamily.Monospace,
-                                        fontSize = 12.sp,
                                         color = color,
                                         modifier = Modifier.background(background)
                                     )
@@ -512,7 +507,6 @@ fun RowScope.TableCell(
         modifier = modifier.padding(horizontal = 8.dp),
         color = textColor,
         fontFamily = FontFamily.Monospace,
-        fontSize = 12.sp,
         fontWeight = fontWeight,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis

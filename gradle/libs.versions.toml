@@ -4,7 +4,7 @@ kotlin = "2.3.20"
 compose-multiplatform = "1.10.3"
 jewel = "0.34.0-253.31033.149"
 kotlinx-coroutines = "1.10.2"
-jna = "5.16.0"
+jna = "5.18.1"
 
 [libraries]
 

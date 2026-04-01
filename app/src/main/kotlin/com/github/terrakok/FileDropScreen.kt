@@ -38,7 +38,7 @@ fun FileDropScreen(onFileDropped: (String) -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
-    val dashColor = if (isHovered) JewelTheme.globalColors.outlines.focused else JewelTheme.globalColors.borders.normal
+    val dashColor = if (isHovered) JewelTheme.globalColors.outlines.focused else JewelTheme.globalColors.text.disabled
     val iconColor = JewelTheme.globalColors.outlines.focused
     val textColor = JewelTheme.defaultTextStyle.color
     val backgroundColor =

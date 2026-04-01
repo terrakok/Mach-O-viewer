@@ -66,6 +66,7 @@ fun DecoratedWindowScope.App() {
                         )
                     }
                 }
+                Spacer(Modifier.width(80.dp))
             }
         }
 
