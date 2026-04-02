@@ -15,7 +15,10 @@
 -keep class org.jetbrains.jewel.** { *; }
 -keep class com.jetbrains.** { *; }
 
-# Keep JewelLogger's dynamically referenced classes (optional, since they are searched at runtime)
+# Keep Nucleus classes
+-keep class io.github.kdroidfilter.nucleus.** { *; }
+
+# Keep JewelLogger's dynamically referenced classes
 -dontwarn com.intellij.openapi.diagnostic.Logger
 -dontwarn org.slf4j.LoggerFactory
 -dontwarn org.slf4j.Logger

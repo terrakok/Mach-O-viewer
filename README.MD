@@ -10,6 +10,8 @@ Mach-O Viewer is a desktop application for exploring and analyzing Mach-O binary
 - **Visual Highlighting**: Highlight data ranges in both hex and ASCII representations.
 - **Drag-and-Drop Support**: Open files by dragging them onto the application window or the application icon.
 - **Command-line arguments**: Open files by passing paths directly to the executable.
+- **File associations**: Double-click `.kexe`, `.dylib`, `.o`, `.a`, and `.bundle` files to open them directly.
+
 
 ## Installation
 
