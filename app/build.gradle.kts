@@ -8,12 +8,6 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
 }
 
-kotlin {
-    compilerOptions {
-        freeCompilerArgs.add("-Xexplicit-backing-fields")
-    }
-}
-
 dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.compose.ui)

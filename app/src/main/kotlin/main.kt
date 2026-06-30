@@ -33,13 +33,13 @@ fun main(args: Array<String>) {
     }
     application {
         AppTheme {
-            val windowState = rememberWindowState(width = 1300.dp, height = 900.dp)
+            val windowState = rememberWindowState(width = 700.dp, height = 400.dp)
             JewelDecoratedWindow(
                 title = "Mach-O viewer",
                 state = windowState,
                 onCloseRequest = ::exitApplication,
             ) {
-                window.minimumSize = Dimension(1300, 900)
+                window.minimumSize = Dimension(700, 400)
                 App()
             }
         }
